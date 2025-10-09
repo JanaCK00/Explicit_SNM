@@ -1,0 +1,9 @@
+resolver: lts-22.42
+
+extra-deps:
+- smcdel-1.3.0
+- HasCacBDD-0.2.0.0@sha256:14bcfba6c2b64626cff99673b351547bda115d59124847dd1898ea56a075a29c,1772
+- decision-diagrams-0.2.0.0@sha256:a973d0e448cb4cb409f93b210bf7f968c893a2152c1e2f81b2e9c922f83f9b76,3423
+- containers-0.6.7
+
+allow-newer: true

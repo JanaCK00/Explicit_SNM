@@ -1,0 +1,69 @@
+{
+    "[haskell]": {
+        "editor.rulers": [
+            80,
+            120
+        ],
+        "editor.tabSize": 4
+    },
+    "[literate haskell]": {
+        "editor.rulers": [
+            80,
+            120
+        ]
+    },
+    "cSpell.enableFiletypes": [
+        "literate haskell",
+        "!haskell",
+    ],
+    "cSpell.language": "en-GB",
+    "cSpell.words": [
+        "Alexandrov",
+        "Alexandru",
+        "Baltag",
+        "bigcup",
+        "biginter",
+        "bigunion",
+        "bisimilar",
+        "bisimulation",
+        "bisimulations",
+        "boxplot",
+        "clopen",
+        "closeds",
+        "compin",
+        "elem",
+        "Fira",
+        "fmap",
+        "foldr",
+        "footline",
+        "footlines",
+        "ghci",
+        "Hasse",
+        "Kripke",
+        "Kuratowski",
+        "Lato",
+        "mathbf",
+        "Nbds",
+        "oneof",
+        "Palatino",
+        "pdftitle",
+        "ponens",
+        "setminus",
+        "Subbases",
+        "subbasis",
+        "subseteq",
+        "textbf",
+        "topo",
+        "topomodel",
+        "topomodels",
+        "toposemantics",
+        "topospace",
+        "topospaces",
+        "uncurry",
+        "varphi"
+    ],
+    "latex-workshop.latex.autoBuild.run": "onSave",
+    "latex-workshop.latex.outDir": "%WORKSPACE_FOLDER%/docs",
+    "files.trimTrailingWhitespace": true,
+    "makefile.configureOnOpen": false
+}
