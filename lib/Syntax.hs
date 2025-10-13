@@ -1,5 +1,8 @@
 module Syntax where
 
+
+--TODO do only necessary imports
+{-
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
@@ -8,46 +11,52 @@ import Test.QuickCheck
   , oneof
   , listOf
   )
-import Data.List (nub)
-import SMCDEL.Language (Prp (..), Agent)
-import Data.Set (Set)
-import qualified Data.Set as S
-import SMCDEL.Internal.Help (lfp)
-import SetTheory (subsetOf1)
+  -}
+--import Data.List (nub)
+--import Data.Set (Set)
+--import qualified Data.Set as S
+--import SMCDEL.Internal.Help (lfp)
+--import SetTheory (subsetOf1)
+import SNModel ( Position, Topic, Agent )
 
 
 {-
   Language, default vocabulary and agents, and generation of arbitrary formulas.
 -}
 
-
+--TODO delete?
 -- Default vocabulary.
-defaultVocab :: [Prp]
-defaultVocab = [P 0, P 1, P 2]
+--defaultVocab :: [Prp]
+--defaultVocab = [P 0, P 1, P 2]
 
-type Group = Set Agent
+--type Group = Set Agent
 
--- Default group of agents.
-defaultAgents:: Group
-defaultAgents = S.fromList $ map show [(1::Integer)..5]
 
--- Syntax of evidence model language (including some abbreviations).
+data Prp = Adopted Agent Position | Connected Topic Agent Agent deriving (Eq,Ord,Show)
+
+{-
+Syntax of Social Network Logic (propositional language with the following special atoms:
+TODO
+-}
 data Form
   = Top
   | Bot
   | PrpF Prp
+  | Xor Form Form -- TODO needed?
   | Neg Form
   | Conj [Form]
   | Disj [Form]
   | Impl Form Form
-  | Box Group Form
-  | Dia Group Form
-  | Forall Group Form
-  | K Group Form
-  | B Group Form
+  | Equiv Form Form --if and only if --TODO needed? Or should I do that using a function?
+  | Cross Float Form -- TODO is it ok if I don't restrict the tau to [0,1] here?
+  | Hash Float Form -- TODO maybe rename those two ;)
   deriving (Eq, Show, Ord)
 
+
+-- TODO needed? Can I copy?
 -- Simplify a formula to an equivalent formula.
+
+{-
 simplify :: Form -> Form
 simplify = lfp simStep
 
@@ -81,19 +90,7 @@ simStep (Impl Top f)    = simStep f
 simStep (Impl f Bot)    = Neg (simStep f)
 simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
-simStep (Box _ Top)     = Top
-simStep (Box _ Bot)     = Bot
-simStep (Box ags f)     = Box ags (simStep f)
-simStep (Dia ags f)     = Dia ags (simStep f)
-simStep (Forall _ Top)  = Top
-simStep (Forall _ Bot)  = Bot
-simStep (Forall ags f)  = Forall ags (simStep f)
-simStep (K _ Bot)       = Bot
-simStep (K _ Top)       = Top
-simStep (K ags f)       = K ags (simStep f)
-simStep (B _ Top)       = Top
-simStep (B _ Bot)       = Bot
-simStep (B ags f)       = B ags (simStep f)
+
 
 {-
   Generate arbitrary sized formulas.
@@ -148,3 +145,5 @@ randomBFWith allprops sz = BF <$> bf' sz where
 
 instance Arbitrary BF where
   arbitrary = sized $ randomBFWith defaultVocab
+
+  -}

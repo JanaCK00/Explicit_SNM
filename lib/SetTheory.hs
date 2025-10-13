@@ -34,10 +34,12 @@ import Test.QuickCheck.Gen (suchThat)
   we only need to manually add the empty set in the arbitrary union.
 -}
 
+--TODO delete?
+--type World = Int
+--type Relation = M.Map World (Set World)
 
-type World = Int
-type Relation = M.Map World (Set World)
-
+--by me TODO does this work with only String? Do the rest of the function still work?
+type Relation a = M.Map a (Set a)
 
 {-
   Close a given set of sets under arbitrary unions. Recursively add binary unions
@@ -72,18 +74,22 @@ arbIntersection sets
   Make a given relation reflexive. Given a world w (the key), add w to its own
   image (val).
 -}
-makeReflexive :: Relation -> Relation
-makeReflexive = M.mapWithKey S.insert
+
+--TODO fix, bc. I changed Relation to Relation a
+--makeReflexive :: Relation -> Relation
+--makeReflexive = M.mapWithKey S.insert
 
 {-
   Recursively make a given relation transitive. For each world, given its current
   image, add all worlds reachable from any world in its image to the current image
   until a fixpoint is reached.
 -}
-makeTransitive :: Relation -> Relation
-makeTransitive rel = lfp makeTransOnce rel where
-  makeTransOnce = M.map addRel
-  addRel val = S.unions [rel ! w | w <- S.toList val] `S.union` val
+
+--TODO fix, bc. I changed Relation to Relation a
+--makeTransitive :: Relation -> Relation
+--makeTransitive rel = lfp makeTransOnce rel where
+  --makeTransOnce = M.map addRel
+  --addRel val = S.unions [rel ! w | w <- S.toList val] `S.union` val
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
