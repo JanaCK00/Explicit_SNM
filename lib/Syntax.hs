@@ -2,7 +2,7 @@ module Syntax where
 
 
 --TODO do only necessary imports
-{-
+
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
@@ -10,53 +10,62 @@ import Test.QuickCheck
   , elements
   , oneof
   , listOf
+  , choose,
+  generate, resize --TODO delete? I put these here to use them in ghci
   )
-  -}
---import Data.List (nub)
---import Data.Set (Set)
---import qualified Data.Set as S
---import SMCDEL.Internal.Help (lfp)
---import SetTheory (subsetOf1)
-import SNModel ( Position, Topic, Agent )
+
+import Data.List (nub)
+import Data.Set (Set)
+import qualified Data.Set as S
+import qualified Data.Map.Strict as M -- TODO do I need strict here?
+import SMCDEL.Internal.Help (lfp)
+import SetTheory (setElements)
+import SNModel ( Position (Pos), Topic (Tpc), Agent (Ag), allPos)
 
 
 {-
   Language, default vocabulary and agents, and generation of arbitrary formulas.
 -}
 
---TODO delete?
--- Default vocabulary.
---defaultVocab :: [Prp]
---defaultVocab = [P 0, P 1, P 2]
-
---type Group = Set Agent
 
 
+{-
+Adopted agent position means "The agent has adopted the position"
+Connected topic agent1 agent2 means "agent1 considers agent2 their friend on the topic."
+-}
 data Prp = Adopted Agent Position | Connected Topic Agent Agent deriving (Eq,Ord,Show)
 
 {-
-Syntax of Social Network Logic (propositional language with the following special atoms:
-TODO
+Syntax of Social Network Logic (propositional language with
+the special atoms Adopted and Connected, and the dynamic operators Infl (Social Influence)
+and Selec (Friendship Selection)
 -}
+
+--adpapted from symbolic topo-e models
 data Form
   = Top
   | Bot
   | PrpF Prp
-  | Xor Form Form -- TODO needed?
+  -- | Xor Form Form -- TODO needed? Or should I do it using a function
   | Neg Form
   | Conj [Form]
   | Disj [Form]
   | Impl Form Form
-  | Equiv Form Form --if and only if --TODO needed? Or should I do that using a function?
-  | Cross Float Form -- TODO is it ok if I don't restrict the tau to [0,1] here?
-  | Hash Float Form -- TODO maybe rename those two ;)
-  deriving (Eq, Show, Ord)
+  -- | Equiv Form Form --TODO needed? Or should I do that using a function?
+  -- | Infl Double Form -- TODO is it ok if I don't restrict the tau to [0,1] here?
+  -- | Selec Double Form
+  deriving (Eq, Show, Ord) --Eq needed in simStep :)
+
+
+--TODO Abkürzungen
 
 
 -- TODO needed? Can I copy?
 -- Simplify a formula to an equivalent formula.
 
 {-
+adapted from Symbolic-Topo-E-Models.Syntax.
+-}
 simplify :: Form -> Form
 simplify = lfp simStep
 
@@ -90,40 +99,107 @@ simStep (Impl Top f)    = simStep f
 simStep (Impl f Bot)    = Neg (simStep f)
 simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
+--TODO include dynamics
+--simStep (Infl _ Bot)    = Bot
+--simStep (Infl _ Top)    = Top
+--simStep (Infl tau f)    = Infl tau (simStep f)
+--simStep (Selec _ Bot)   = Bot
+--simStep (Selec _ Top)   = Top
+--simStep (Selec tau f)   = Selec tau (simStep f)
+
+
+--default Agents for usage in random generation
+
+--TODO do I benefit from using Set here?
+--Do I benefit from parametrizing for the size?
+--n > 0 ...TODO how to enforce?
+defaultAgents :: Int -> Set Agent
+defaultAgents n = S.fromList $ map (Ag . show) [(1::Int)..n]
+
+
+--defaultPositions for usage in random generation
+--n = number of topics, m = number of positions per topic
+--n,m >0 ...TODO how to enforce?
+defaultPositions :: Int -> Int -> M.Map Topic (Set Position)
+defaultPositions n m = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..n]] where
+  ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..m]
+
+
+--TODO is this full list better than creating Instances for each of the types?
+--default vocabulary based on default agents
+{-
+defaultVocab :: Set Agent -> M.Map Topic (Set Position) -> [Prp]
+defaultVocab agents' positions' = adopteds ++ connecteds where
+  adopteds = [Adopted ag p | ag <- S.toList agents', p <- S.toList $ allPos positions']
+  connecteds = [Connected t a1 a2 | a1 <- S.toList agents', a2 <- S.toList agents', t <- S.toList $ M.keysSet positions']
+-}
+
+--TODO: Why is this necessary? Is the Orphan Instance dangerous?
+--newtype ArbAgent = Arb Agent deriving (Eq, Ord, Show)
+--newtype ArbTopic = Arb Topic deriving (Eq, Ord, Show)
+--newtype ArbPosition = Arb Position deriving (Eq, Ord, Show)
+
+
+--arbitrary Agent
+instance Arbitrary Agent where
+  arbitrary = do setElements $ defaultAgents 3 --TODO make larger for bigger examples
+
+--arbitrary Topic
+instance Arbitrary Topic where
+  arbitrary = do elements $ M.keys $ defaultPositions 3 3
+
+--arbitrary Position
+instance Arbitrary Position where
+  arbitrary = do setElements $ allPos $ defaultPositions 3 3
+
+instance Arbitrary Prp where
+  arbitrary = oneof [ Adopted <$> (arbitrary::Gen Agent) <*> (arbitrary::Gen Position)
+                    , Connected <$> (arbitrary::Gen Topic) <*> (arbitrary::Gen Agent) <*> (arbitrary::Gen Agent)
+                    ]
 
 
 {-
   Generate arbitrary sized formulas.
-  Adapted from SMCDEL.Language.
+  Adapted from Symbolic-Topo-E-Models.Syntax.
 -}
 instance Arbitrary Form where
     arbitrary = sized randomForm
       where
         randomForm :: Int -> Gen Form
-        randomForm 0 = oneof [ pure Top
-                             , pure Bot
-                             , PrpF <$> elements defaultVocab
+        randomForm 0 = oneof [ --pure Top --TODO took this out for testing
+                             --, pure Bot,
+                              PrpF <$> (arbitrary::Gen Prp)
                              ]
-        randomForm n = oneof [ pure Top
-                             , pure Bot
-                             , PrpF <$> elements defaultVocab
+        randomForm n = oneof [ --pure Top --TODO took this out for testing
+                             --, pure Bot,
+                              PrpF <$> (arbitrary::Gen Prp) --old: elements (defaultVocab (defaultAgents 5) (defaultPositions 3 3))
                              , Neg <$> st
                              , Conj <$> listOf st
                              , Disj <$> listOf st
                              , Impl <$> st <*> st
-                             , Box <$> subsetOf1 defaultAgents <*> st
-                             , Dia <$> subsetOf1 defaultAgents <*> st
-                             , Forall <$> subsetOf1 defaultAgents <*> st
-                             , K <$> subsetOf1 defaultAgents <*> st
-                             , B <$> subsetOf1 defaultAgents <*> st
+                             --, Infl <$> choose (0,1) <*> st -- TODO is this a save way to get a random tau?
+                             --, Selec <$> choose (0,1) <*> st
                              ]
           where
             st = randomForm (n `div` 3)
 
+--TODO is this the only way to get it to generate later in ghci?
+getGen :: Gen Form
+getGen = arbitrary :: Gen Form
+
+{-
+usage in ghci:
+myForm <- generate getGen --(default sized passed is 30)
+simplify myForm
+generate $ resize 20 getGen
+-}
+
+
+--TODO needed?
 
 -- Boolean formulas (adapted from SMCDEL.Language to work with our Form type).
 
-
+{-}
 newtype BF = BF Form deriving (Eq,Ord,Show)
 
 -- Generate arbitrary sized boolean formulas.
@@ -146,4 +222,4 @@ randomBFWith allprops sz = BF <$> bf' sz where
 instance Arbitrary BF where
   arbitrary = sized $ randomBFWith defaultVocab
 
-  -}
+-}
