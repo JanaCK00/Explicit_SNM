@@ -2,7 +2,6 @@ module Syntax where
 
 
 --TODO do only necessary imports
-
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
@@ -10,23 +9,15 @@ import Test.QuickCheck
   , elements
   , oneof
   , listOf
-  , choose,
-  generate, resize --TODO delete? I put these here to use them in ghci
-  )
-
+  , choose)
 import Data.List (nub)
-import Data.Set (Set)
-import qualified Data.Set as S
-import qualified Data.Map.Strict as M -- TODO do I need strict here?
 import SMCDEL.Internal.Help (lfp)
-import SetTheory (setElements)
-import SNModel ( Position (Pos), Topic (Tpc), Agent (Ag), allPos)
+import SNModel
 
 
 {-
-  Language, default vocabulary and agents, and generation of arbitrary formulas.
+  Language, simplification of formulas, arbitrary generation of formulas
 -}
-
 
 
 {-
@@ -108,49 +99,7 @@ simStep (Impl f g)     | f==g      = Top
 --simStep (Selec tau f)   = Selec tau (simStep f)
 
 
---default Agents for usage in random generation
 
---TODO do I benefit from using Set here?
---Do I benefit from parametrizing for the size?
---n > 0 ...TODO how to enforce?
-defaultAgents :: Int -> Set Agent
-defaultAgents n = S.fromList $ map (Ag . show) [(1::Int)..n]
-
-
---defaultPositions for usage in random generation
---n = number of topics, m = number of positions per topic
---n,m >0 ...TODO how to enforce?
-defaultPositions :: Int -> Int -> M.Map Topic (Set Position)
-defaultPositions n m = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..n]] where
-  ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..m]
-
-
---TODO is this full list better than creating Instances for each of the types?
---default vocabulary based on default agents
-{-
-defaultVocab :: Set Agent -> M.Map Topic (Set Position) -> [Prp]
-defaultVocab agents' positions' = adopteds ++ connecteds where
-  adopteds = [Adopted ag p | ag <- S.toList agents', p <- S.toList $ allPos positions']
-  connecteds = [Connected t a1 a2 | a1 <- S.toList agents', a2 <- S.toList agents', t <- S.toList $ M.keysSet positions']
--}
-
---TODO: Why is this necessary? Is the Orphan Instance dangerous?
---newtype ArbAgent = Arb Agent deriving (Eq, Ord, Show)
---newtype ArbTopic = Arb Topic deriving (Eq, Ord, Show)
---newtype ArbPosition = Arb Position deriving (Eq, Ord, Show)
-
-
---arbitrary Agent
-instance Arbitrary Agent where
-  arbitrary = do setElements $ defaultAgents 3 --TODO make larger for bigger examples
-
---arbitrary Topic
-instance Arbitrary Topic where
-  arbitrary = do elements $ M.keys $ defaultPositions 3 3
-
---arbitrary Position
-instance Arbitrary Position where
-  arbitrary = do setElements $ allPos $ defaultPositions 3 3
 
 instance Arbitrary Prp where
   arbitrary = oneof [ Adopted <$> (arbitrary::Gen Agent) <*> (arbitrary::Gen Position)
@@ -166,12 +115,12 @@ instance Arbitrary Form where
     arbitrary = sized randomForm
       where
         randomForm :: Int -> Gen Form
-        randomForm 0 = oneof [ --pure Top --TODO took this out for testing
+        randomForm 0 = oneof [ --pure Top --TODO took out for manual testing
                              --, pure Bot,
                               PrpF <$> (arbitrary::Gen Prp)
                              ]
-        randomForm n = oneof [ --pure Top --TODO took this out for testing
-                             --, pure Bot,
+        randomForm n = oneof [ --pure Top
+                             --, pure Bot, --TODO took out for manual testing
                               PrpF <$> (arbitrary::Gen Prp) --old: elements (defaultVocab (defaultAgents 5) (defaultPositions 3 3))
                              , Neg <$> st
                              , Conj <$> listOf st
@@ -184,11 +133,12 @@ instance Arbitrary Form where
             st = randomForm (n `div` 3)
 
 --TODO is this the only way to get it to generate later in ghci?
-getGen :: Gen Form
-getGen = arbitrary :: Gen Form
+getGenForm :: Gen Form
+getGenForm = arbitrary :: Gen Form
 
 {-
 usage in ghci:
+import Test.QuickCheck (generate)
 myForm <- generate getGen --(default sized passed is 30)
 simplify myForm
 generate $ resize 20 getGen
@@ -223,3 +173,5 @@ instance Arbitrary BF where
   arbitrary = sized $ randomBFWith defaultVocab
 
 -}
+
+

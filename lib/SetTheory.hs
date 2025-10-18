@@ -1,5 +1,9 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 
+
+
+--TODO mark where I copied or adapted from SMCDEL
+
 module SetTheory where
 
 import SMCDEL.Internal.Help (lfp)
@@ -21,9 +25,12 @@ import Test.QuickCheck
   , listOf
   , listOf1
   )
-import qualified Data.Map.Strict as M
-import Data.Map.Strict ((!))
+--import qualified Data.Map.Strict as M
+--import Data.Map.Strict ((!))
 import Test.QuickCheck.Gen (suchThat)
+
+--TODO is this ok? otherwise I get cyclical imports
+--import SNModel (Relation)
 
 
 {-
@@ -38,8 +45,8 @@ import Test.QuickCheck.Gen (suchThat)
 --type World = Int
 --type Relation = M.Map World (Set World)
 
---by me TODO does this work with only String? Do the rest of the function still work?
-type Relation a = M.Map a (Set a)
+--I took this out bc I defined it in SNModel.hs and can't have cyclical imports
+--type Relation = M.Map Agent (Set Agent)
 
 {-
   Close a given set of sets under arbitrary unions. Recursively add binary unions
@@ -75,7 +82,7 @@ arbIntersection sets
   image (val).
 -}
 
---TODO fix, bc. I changed Relation to Relation a
+--TODO fix if needed, I changed Relation
 --makeReflexive :: Relation -> Relation
 --makeReflexive = M.mapWithKey S.insert
 
@@ -85,7 +92,7 @@ arbIntersection sets
   until a fixpoint is reached.
 -}
 
---TODO fix, bc. I changed Relation to Relation a
+--TODO fix if needed, bc I changed Relation
 --makeTransitive :: Relation -> Relation
 --makeTransitive rel = lfp makeTransOnce rel where
   --makeTransOnce = M.map addRel
@@ -93,7 +100,6 @@ arbIntersection sets
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
-
 
 setOneOf :: Set (Gen a) -> Gen a
 setOneOf = oneof . S.toList

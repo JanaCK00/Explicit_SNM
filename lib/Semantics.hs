@@ -2,8 +2,8 @@ module Semantics where
 
 
 --TODO necessary imports
-import Syntax
-import SNModel -- TODO restrict?
+import Syntax ( Form(..), Prp(Connected, Adopted) )
+import SNModel ( SNModel(rel, val) )
 import Data.Map.Strict ((!))
 import qualified Data.Set as S
 
