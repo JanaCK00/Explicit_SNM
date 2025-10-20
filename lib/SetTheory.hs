@@ -29,7 +29,7 @@ import Test.QuickCheck
 --import Data.Map.Strict ((!))
 import Test.QuickCheck.Gen (suchThat)
 
---TODO is this ok? otherwise I get cyclical imports
+--TODO fix cyclical imports
 --import SNModel (Relation)
 
 

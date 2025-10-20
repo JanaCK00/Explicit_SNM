@@ -1,7 +1,7 @@
 module Semantics where
 
 
---TODO necessary imports
+--TODO only necessary imports
 import Syntax ( Form(..), Prp(Connected, Adopted) )
 import SNModel ( SNModel(rel, val) )
 import Data.Map.Strict ((!))
@@ -21,12 +21,12 @@ import qualified Data.Set as S
 (|=) m (Disj fs)  = any (m |=) fs
 (|=) m (Impl f g) = not (m |= f) || m |= g --TODO needed?
 -- (|=) m (Equiv f g) = m |= Conj [Impl f g, Impl g f]-- TODO needed? (I actually don't think so ;))
--- (|=) m (Infl tau f) =  --TODO dynamics
+-- (|=) m (Infl tau f) =  --TODO dynamics, somehow restrict tau? Or take even numbers as zero, odd as 1, between as fraction, negative -> absolute
 -- (|=) m (Selec tau t) =  --TODO somehow restrict tau
 
 {-
 
-When in doubt: I could always implement this acc. to the recursion axioms in the interplay paper
+When in doubt: I could always implement the dynamics acc. to the recursion axioms in the interplay paper
 -}
 
 {-

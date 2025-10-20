@@ -21,3 +21,13 @@ dependencies:
 
 library:
   source-dirs: lib
+
+
+tests:
+  tests:
+    main: tests.hs
+    source-dirs: test
+    dependencies:
+      - explicitSNM
+      - QuickCheck
+      - hspec

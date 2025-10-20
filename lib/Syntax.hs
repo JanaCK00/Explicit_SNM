@@ -6,10 +6,11 @@ import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , sized
-  , elements
+  --, elements --might need this later
   , oneof
   , listOf
-  , choose)
+  --, choose -- needed for dynamics later
+  )
 import Data.List (nub)
 import SMCDEL.Internal.Help (lfp)
 import SNModel
@@ -43,7 +44,7 @@ data Form
   | Disj [Form]
   | Impl Form Form
   -- | Equiv Form Form --TODO needed? Or should I do that using a function?
-  -- | Infl Double Form -- TODO is it ok if I don't restrict the tau to [0,1] here?
+  -- | Infl Double Form -- TODO add dynamics
   -- | Selec Double Form
   deriving (Eq, Show, Ord) --Eq needed in simStep :)
 
@@ -121,7 +122,7 @@ instance Arbitrary Form where
                              ]
         randomForm n = oneof [ --pure Top
                              --, pure Bot, --TODO took out for manual testing
-                              PrpF <$> (arbitrary::Gen Prp) --old: elements (defaultVocab (defaultAgents 5) (defaultPositions 3 3))
+                              PrpF <$> (arbitrary::Gen Prp)
                              , Neg <$> st
                              , Conj <$> listOf st
                              , Disj <$> listOf st
@@ -145,7 +146,7 @@ generate $ resize 20 getGen
 -}
 
 
---TODO needed?
+--TODO needed? copied from Symbolic-Topo-E-Models.Syntax
 
 -- Boolean formulas (adapted from SMCDEL.Language to work with our Form type).
 

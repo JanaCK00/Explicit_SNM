@@ -1,15 +1,11 @@
 module SNModel where
 
---TODO add necessary imports
+--TODO only necessary imports
 
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
-  , sized
   , elements
-  , oneof
-  , listOf
-  , choose
   , sublistOf  )
 
 import qualified Data.Map.Strict as M -- TODO do I need strict here?
@@ -33,68 +29,68 @@ Social networks don't have to satisfy any properties
 -}
 
 
---TODO decide whether to import this from SetTheory, once it's fixed there. But I get cyclic imports then
+--TODO decide where to define this, once I have fixed the cyclic import issue with SetTheory
 type Relation = M.Map Agent (Set Agent)
 
 
---Is it enough to just assume that the sets and hence the maps will never be empty?
+--TODO Is it enough to just assume that the sets and hence the maps will never be empty?
 {-
 do I even get a benefit from representing these as sets??
 especially bc I keep converting them to lists and back ;)
-BUT: they might help me for the uniqueness...
+BUT: they might help me for uniqueness...
 -}
 data SNModel = SNM
  { agents :: Set Agent
- --, topics :: Set Topic --TODO do I even need this, if I have the maps? I can get it from M.keysSet positions
- , positions :: M.Map Topic (Set Position) -- or is the other way round better and then I don't need the topic in the data type?
+ , positions :: M.Map Topic (Set Position)
  , rel :: M.Map Topic Relation --the social networks. I want this to be from all topics, and in the relations from all agents
- --TODO think about how I want to model val...depends on implementation of the updates I think!
- , val :: M.Map Position (Set Agent) --TODO this is valuation, should have all Positions as keys (maybe sometimes maps to empty set)
- } deriving (Show)--TODO deriving stuff?
+ , val :: M.Map Position (Set Agent) --the valuation, should have all Positions as keys (maybe sometimes maps to empty set)
+ } deriving (Eq, Show)
 
 {-
 translation from val to dual.
-Like this is doesn't get inconsistent, and if i need it several times I could cache it...
-    -}
-agentPos :: SNModel -> M.Map (Agent, Topic) (Set Position) --I prefer a map (tuple -> set) to a nested map I think, bc I never need all the positions from a specific agent, only ever topic specific
-agentPos (SNM agents' positions' _ val') = M.fromList[((ag, t), theirPs ag t)| ag <- S.toList agents', t <- S.toList $ M.keysSet positions'] where
+(can't have both as field in SNModel, it could get inconsistent)
+TODO look into caching when it's used several times
+I never need all the positions of an agent, only ever topic specific
+-}
+agentPos :: SNModel -> M.Map (Agent, Topic) (Set Position)
+agentPos (SNM agents' positions' _ val') = M.fromList[((ag, t), theirPs ag t)| ag <- S.toList agents', t <- M.keys positions'] where
     theirPs ag t = S.fromList [p | p <- S.toList $ positions' ! t, ag `S.member` (val' ! p)]
 
---TODO necessary?
+{-
+Given a positions Map (M.Map Topic (Set Position)), returns a Set of all positions
+-}
 allPos :: M.Map Topic (Set Position) -> Set Position
 allPos = S.unions . M.elems
 
 
---ACHTUNG Set braucht Ord!! Map braucht bei key Ord
 {-
-TODO why not use integers directly?
+TODO why not use Int instead of String?
 Apart from the fact that I can make more readable examples with string
-but in generation I only ever use "1", "2"... anyway...
+but in generation I only ever use "1", "2" a.s.o. anyway...
 -}
-newtype Agent = Ag String deriving (Eq, Show, Ord)
+newtype Agent = Ag String deriving (Eq, Show, Ord) --Set needs Ord, Map needs Ord for key
 newtype Topic = Tpc String deriving (Eq, Show, Ord)
 data Position = Pos { posTopic:: Topic, position :: String} deriving (Eq, Show, Ord)
-    --like this I'm sure they never intersect!..and I can always get out the topic
-    --or could it be avoided somehow?
---TODO do I need to make sure, these are always different from each other?? Or do the sets help me there?
---sould I use type or newtype? Should I use String or Int?
---TODO do I need to get the string out there sometimes? Probabily not, right?
-
+    {-by having a field for the topic a position belongs to,
+    I'm sure every position is unique across topics. (and I can always get out the topic)
+    -}
 
 
 --default Agents for usage in random generation
 
 --TODO do I benefit from using Set here?
 --Do I benefit from parametrizing for the size?
---n > 0 ...TODO how to enforce?
+--n > 0, otherwise empty Set
 defaultAgents :: Int -> Set Agent
 defaultAgents n = S.fromList $ map (Ag . show) [(1::Int)..n]
 
 
 --defaultPositions for usage in random generation
 --n = number of topics, m = number of positions per topic
---n,m >0 ...TODO how to enforce?
+--n,m >0, otherwise empty Map
 defaultPositions :: Int -> Int -> M.Map Topic (Set Position)
+defaultPositions 0 _ = M.empty
+defaultPositions _ 0 = M.empty
 defaultPositions n m = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..n]] where
   ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..m]
 
@@ -110,6 +106,9 @@ defaultVocab agents' positions' = adopteds ++ connecteds where
 
 
 --arbitrary Agent
+{- TODO change parameters if needed, has to be the same as in the Arbitrary SNmodel,
+    that's bad!, so fix this
+    --}
 instance Arbitrary Agent where
   arbitrary = do setElements $ defaultAgents 3 --TODO make larger for bigger examples
 
@@ -248,7 +247,7 @@ getGenModel = arbitrary :: Gen SNModel
 
 {-
 usage in ghci:
-
+import Test.QuickCheck
 myModel <- generate getGenModel
 -}
 
