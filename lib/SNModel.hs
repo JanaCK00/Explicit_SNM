@@ -1,7 +1,6 @@
 module SNModel where
 
 --TODO only necessary imports
-
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
@@ -28,29 +27,29 @@ Social networks don't have to satisfy any properties
 (i.e. they can be reflexive and non-symmetric).
 -}
 
-
 --TODO decide where to define this, once I have fixed the cyclic import issue with SetTheory
-type Relation = M.Map Agent (Set Agent)
+type Relation = M.Map Agent (Set Agent) --every agent should be a key
 
 
---TODO Is it enough to just assume that the sets and hence the maps will never be empty?
 {-
-do I even get a benefit from representing these as sets??
-especially bc I keep converting them to lists and back ;)
+TODO Is it enough to just assume that the sets and hence the maps will never be empty?
+TODO do I even get a benefit from representing these as sets?? especially bc
+I keep converting them to lists and back ;)
 BUT: they might help me for uniqueness...
 -}
 data SNModel = SNM
  { agents :: Set Agent
  , positions :: M.Map Topic (Set Position)
- , rel :: M.Map Topic Relation --the social networks. I want this to be from all topics, and in the relations from all agents
- , val :: M.Map Position (Set Agent) --the valuation, should have all Positions as keys (maybe sometimes maps to empty set)
+ , rel :: M.Map Topic Relation --the social networks, every topic should be a key
+ , val :: M.Map Position (Set Agent) --the valuation, every position should be a key
  } deriving (Eq, Show)
 
 {-
 translation from val to dual.
-(can't have both as field in SNModel, it could get inconsistent)
+  - can't have both as field in SNModel, bc it could get inconsistent
+  - decided to have tuple as key, bc I never need the full set of positions of an agent
+
 TODO look into caching when it's used several times
-I never need all the positions of an agent, only ever topic specific
 -}
 agentPos :: SNModel -> M.Map (Agent, Topic) (Set Position)
 agentPos (SNM agents' positions' _ val') = M.fromList[((ag, t), theirPs ag t)| ag <- S.toList agents', t <- M.keys positions'] where
@@ -64,67 +63,51 @@ allPos = S.unions . M.elems
 
 
 {-
-TODO why not use Int instead of String?
-Apart from the fact that I can make more readable examples with string
+TODO would it make a difference to use Int instead of String?
+With string I can make more readable examples
 but in generation I only ever use "1", "2" a.s.o. anyway...
 -}
 newtype Agent = Ag String deriving (Eq, Show, Ord) --Set needs Ord, Map needs Ord for key
 newtype Topic = Tpc String deriving (Eq, Show, Ord)
 data Position = Pos { posTopic:: Topic, position :: String} deriving (Eq, Show, Ord)
-    {-by having a field for the topic a position belongs to,
+    {-
+    by having a field for the topic a position belongs to,
     I'm sure every position is unique across topics. (and I can always get out the topic)
     -}
 
-
---default Agents for usage in random generation
-
 --TODO do I benefit from using Set here?
---Do I benefit from parametrizing for the size?
---n > 0, otherwise empty Set
-defaultAgents :: Int -> Set Agent
-defaultAgents n = S.fromList $ map (Ag . show) [(1::Int)..n]
+--default Agents for usage in random generation
+defaultAgents :: Set Agent
+defaultAgents = S.fromList $ map (Ag . show) [(1::Int)..nrAgs] where
+  nrAgs = 3 --CHANGE number of agents if needed
+
 
 
 --defaultPositions for usage in random generation
---n = number of topics, m = number of positions per topic
---n,m >0, otherwise empty Map
-defaultPositions :: Int -> Int -> M.Map Topic (Set Position)
-defaultPositions 0 _ = M.empty
-defaultPositions _ 0 = M.empty
-defaultPositions n m = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..n]] where
-  ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..m]
+defaultPositions :: M.Map Topic (Set Position)
+defaultPositions = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..nrTpcs]] where
+  nrTpcs = 3 --CHANGE number of topics if needed
+  ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..nrPos] where
+    nrPos = 3 --CHANGE number of positions per topic if needed
 
 
---TODO is this full list better than creating Instances for each of the types?
---default vocabulary based on default agents
+
 {-
-defaultVocab :: Set Agent -> M.Map Topic (Set Position) -> [Prp]
-defaultVocab agents' positions' = adopteds ++ connecteds where
-  adopteds = [Adopted ag p | ag <- S.toList agents', p <- S.toList $ allPos positions']
-  connecteds = [Connected t a1 a2 | a1 <- S.toList agents', a2 <- S.toList agents', t <- S.toList $ M.keysSet positions']
+Arbitrary generation of Agents, Topics and Positions.
+needed for random generation of formulas (see Syntax.hs)
+(bc. agents, topics and positions show up in Propositions)
+
+OR: would a defined defaultVocab be better? see Syntax.hs
 -}
 
-
---arbitrary Agent
-{- TODO change parameters if needed, has to be the same as in the Arbitrary SNmodel,
-    that's bad!, so fix this
-    --}
 instance Arbitrary Agent where
-  arbitrary = do setElements $ defaultAgents 3 --TODO make larger for bigger examples
+  arbitrary = do setElements defaultAgents
 
---arbitrary Topic
-{- TODO change parameters if needed, has to be the same as in the Arbitrary SNmodel,
-    that's bad!, so fix this
-    --}
 instance Arbitrary Topic where
-  arbitrary = do elements $ M.keys $ defaultPositions 3 3
+  arbitrary = do elements $ M.keys defaultPositions
 
---arbitrary Position
-{- TODO change parameters if needed, has to be the same as in the Arbitrary SNmodel,
-    that's bad!, so fix this
-    --}
 instance Arbitrary Position where
-  arbitrary = do setElements $ allPos $ defaultPositions 3 3
+  arbitrary = do setElements $ allPos defaultPositions
 
 
 {-
@@ -194,9 +177,10 @@ exampleSmall = SNM abc positions' rel' val' where
 {-
   Given a list of Agents, generate a random Relation (M.Map Agent (Set Agent))
   adapted from symbolic-topo-e-models.Explicit.kripkeModels
+
+  TODO why did she use List here instead of set? To patternmatch more easily?
+  but in the usage I have to convert defaultAgents to lists every time...
 -}
---TODO why did she use List here instead of set? To patternmatch more easily?
---but in the usage I have to convert defaultAgents to lists every time...
 
 randomRel :: [Agent] -> Gen Relation
 randomRel [] = return M.empty
@@ -218,7 +202,7 @@ randomRelMap ags (t:tpcs) =  do
     return $ M.union rest thisTpcsRel
 
 {-
-Given a set of agents and a set of positions, generate a random Valuation
+Given a list of agents and a list of positions, generate a random Valuation
 -}
 randomVal :: [Agent] -> [Position] -> Gen (M.Map Position (Set Agent))
 randomVal _ [] = return M.empty
@@ -235,8 +219,8 @@ randomVal ags (p:pos) = do
 instance Arbitrary SNModel where
   arbitrary = do
     --TODO limit some stuff?
-    let ags = defaultAgents 3
-        pos = defaultPositions 3 3
+    let ags = defaultAgents
+        pos = defaultPositions
     randomRels <- randomRelMap (S.toList ags) (M.keys pos)
     randomV <- randomVal (S.toList ags) (S.toList $ allPos pos)
     return (SNM ags pos randomRels randomV)

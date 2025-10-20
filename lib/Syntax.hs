@@ -14,6 +14,7 @@ import Test.QuickCheck
 import Data.List (nub)
 import SMCDEL.Internal.Help (lfp)
 import SNModel
+import qualified SMCDEL.Explicit.DEMO_S5 as Proposition
 
 
 {-
@@ -38,25 +39,31 @@ data Form
   = Top
   | Bot
   | PrpF Prp
-  -- | Xor Form Form -- TODO needed? Or should I do it using a function
   | Neg Form
   | Conj [Form]
   | Disj [Form]
   | Impl Form Form
-  -- | Equiv Form Form --TODO needed? Or should I do that using a function?
   -- | Infl Double Form -- TODO add dynamics
   -- | Selec Double Form
   deriving (Eq, Show, Ord) --Eq needed in simStep :)
 
 
---TODO Abkürzungen
+--Abbreviations
+
+--equivalence <->
+equiv :: Form -> Form -> Form
+equiv f g = Conj [Impl f g, Impl g f]
+
+xor :: Form -> Form -> Form
+xor f g = Disj [Conj [f, Neg g], Conj [Neg f, g]]
 
 
--- TODO needed? Can I copy?
--- Simplify a formula to an equivalent formula.
+--TODO more abbreviations involcing dynamics, e.g. sequence of updates
+
 
 {-
-adapted from Symbolic-Topo-E-Models.Syntax.
+Simplify a formula to an equivalent formula.
+Adapted from Symbolic-Topo-E-Models.Syntax.
 -}
 simplify :: Form -> Form
 simplify = lfp simStep
@@ -101,7 +108,16 @@ simStep (Impl f g)     | f==g      = Top
 
 
 
+{-
+generate an Arbitrary Proposition
 
+alternatively we could use a defined defaultVocab. something like:
+
+defaultVocab :: Set Agent -> M.Map Topic (Set Position) -> [Prp]
+defaultVocab agents' positions' = adopteds ++ connecteds where
+  adopteds = [Adopted ag p | ag <- S.toList agents', p <- S.toList $ allPos positions']
+  connecteds = [Connected t a1 a2 | a1 <- S.toList agents', a2 <- S.toList agents', t <- M.keys positions']
+-}
 instance Arbitrary Prp where
   arbitrary = oneof [ Adopted <$> (arbitrary::Gen Agent) <*> (arbitrary::Gen Position)
                     , Connected <$> (arbitrary::Gen Topic) <*> (arbitrary::Gen Agent) <*> (arbitrary::Gen Agent)
@@ -116,13 +132,13 @@ instance Arbitrary Form where
     arbitrary = sized randomForm
       where
         randomForm :: Int -> Gen Form
-        randomForm 0 = oneof [ --pure Top --TODO took out for manual testing
-                             --, pure Bot,
-                              PrpF <$> (arbitrary::Gen Prp)
+        randomForm 0 = oneof [ pure Top
+                             , pure Bot
+                             , PrpF <$> (arbitrary::Gen Prp)
                              ]
-        randomForm n = oneof [ --pure Top
-                             --, pure Bot, --TODO took out for manual testing
-                              PrpF <$> (arbitrary::Gen Prp)
+        randomForm n = oneof [ pure Top
+                             , pure Bot
+                             , PrpF <$> (arbitrary::Gen Prp)
                              , Neg <$> st
                              , Conj <$> listOf st
                              , Disj <$> listOf st
