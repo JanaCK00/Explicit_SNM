@@ -14,8 +14,6 @@ import Test.QuickCheck
 import Data.List (nub)
 import SMCDEL.Internal.Help (lfp)
 import SNModel
-import qualified SMCDEL.Explicit.DEMO_S5 as Proposition
-
 
 {-
   Language, simplification of formulas, arbitrary generation of formulas

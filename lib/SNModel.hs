@@ -35,7 +35,7 @@ type Relation = M.Map Agent (Set Agent) --every agent should be a key
 TODO Is it enough to just assume that the sets and hence the maps will never be empty?
 TODO do I even get a benefit from representing these as sets?? especially bc
 I keep converting them to lists and back ;)
-BUT: they might help me for uniqueness...
+BUT: they might help me for uniqueness... (keys in Maps are unique anyways)
 -}
 data SNModel = SNM
  { agents :: Set Agent
@@ -79,16 +79,16 @@ data Position = Pos { posTopic:: Topic, position :: String} deriving (Eq, Show, 
 --default Agents for usage in random generation
 defaultAgents :: Set Agent
 defaultAgents = S.fromList $ map (Ag . show) [(1::Int)..nrAgs] where
-  nrAgs = 3 --CHANGE number of agents if needed
+  nrAgs = 50 --CHANGE number of agents if needed
 
 
 
 --defaultPositions for usage in random generation
 defaultPositions :: M.Map Topic (Set Position)
 defaultPositions = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..nrTpcs]] where
-  nrTpcs = 3 --CHANGE number of topics if needed
+  nrTpcs = 30 --CHANGE number of topics if needed
   ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..nrPos] where
-    nrPos = 3 --CHANGE number of positions per topic if needed
+    nrPos = 30 --CHANGE number of positions per topic if needed
 
 
 
