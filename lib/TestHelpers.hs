@@ -3,10 +3,11 @@ module TestHelpers where
 import Syntax
 import SNModel
 import qualified Data.Map.Strict as M
-import Data.Map.Strict ((!))
+--import Data.Map.Strict ((!))
 import qualified Data.Set as S
-import Data.Set (Set)
-import Data.List as L
+--import Data.Set (Set)
+--import Data.List as L
+import Semantics
 
 propo1 :: Form
 propo1 = PrpF (Adopted (Ag "1") (Pos (Tpc "1") "1"))
@@ -50,12 +51,26 @@ validPositions :: SNModel -> Bool
 validPositions (SNM _ positions' _ _) =  all everyPos (M.toList positions') where
     everyPos (tpc, pos) = all (\p -> posTopic p == tpc) pos
 
+{-}
 --check if everything that used to be modeled as a set has no duplicates in list-form
 noDuplicates :: SNModel -> Bool
 noDuplicates (SNM agents' positions' rel' val') = noDups agents' && all noDups positions' && all (all noDups) rel' && all noDups val' where
     noDups l = S.toList l == nub (S.toList l) --TODO remove toList after I've changed it
+-}
 
 --check all properties at once
 --TODO extend if I write more
 isValidSNModel :: SNModel -> Bool
-isValidSNModel snm = all (\f -> f snm) [fullRel, fullVal, nonEmptyAgs, nonEmptyPos, nonEmptyTpcs, validPositions, noDuplicates]
+isValidSNModel snm = all (\f -> f snm) [fullRel, fullVal, nonEmptyAgs, nonEmptyPos, nonEmptyTpcs, validPositions]
+
+--TODO find out how to get random rumbers in [0,1]
+consecutiveSelec :: SNModel -> Bool
+consecutiveSelec m = updSelec m 0.7 == updSelec (updSelec m 0.5) 0.7
+
+--TODO find out how to get random rumbers in [0,1]
+--test if an Infl after a Selec 1 doesn't change anything
+consInflSelecOne :: SNModel -> Bool
+consInflSelecOne m = updSelec m 1 == updInfl (updSelec m 1) 0.5
+
+
+--TODO check if an application of Selec makes it reflexive and transitive

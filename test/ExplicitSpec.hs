@@ -36,18 +36,29 @@ spec = do
         prop "Arbitrary SNModel has valid positions map" $ do
             \snm -> validPositions (snm::SNModel)
 
-    describe "Testing for no duplicates in the model" $ do
+    {-describe "Testing for no duplicates in the model" $ do
         prop "Arbitrary SNModel has no duplicates in fields" $ do
             \snm -> noDuplicates (snm::SNModel)
+        -}
 
     describe "Testing if all properties are fulfilled" $ do
-        prop "Arbitrary SNmodel is a social networks model" $ do
+        prop "Arbitrary SNModel is a social networks model" $ do
             \snm -> isValidSNModel (snm::SNModel)
+
+--TODO find out how to get random valud taus here....
+
+    describe "Testing if consecutive application of friendship selection doesn't depend on first" $ do
+        prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
+            \snm -> consecutiveSelec (snm::SNModel)
+
+    describe "Testing if infl after Selec 1 doesn't do anything" $ do
+        prop "Arbitrary SNModel doesn't change with Infl after a Selec 1" $ do
+            \snm ->consInflSelecOne  (snm::SNModel)
+
 
 
 
 {-
 TODO think of things to check
-(is there much more for the models without updates? bc the relations don't have to fulfill anything...
 (maybe some axioms?)
 -}

@@ -6,10 +6,10 @@ import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , sized
-  --, elements --might need this later
+
   , oneof
   , listOf
-  --, choose -- needed for dynamics later
+  , choose
   )
 import Data.List (nub)
 import SMCDEL.Internal.Help (lfp)
@@ -27,6 +27,16 @@ Connected topic agent1 agent2 means "agent1 considers agent2 their friend on the
 data Prp = Adopted Agent Position | Connected Topic Agent Agent deriving (Eq,Ord,Show)
 
 {-
+modal operators for updates with thresholds
+Infl is social influence: Agents change what positions they hold based on their topic-specific
+social network. (proportion of friends who hold a position should be larger or equal to tau)
+Selec is friendship selection: Agents choose their social connections in each topic-specific social network
+based on the proportion of positions they agree on (>= tau)
+-}
+data UpOperator = Infl Double | Selec Double deriving (Eq, Ord, Show)
+
+
+{-
 Syntax of Social Network Logic (propositional language with
 the special atoms Adopted and Connected, and the dynamic operators Infl (Social Influence)
 and Selec (Friendship Selection)
@@ -36,28 +46,36 @@ and Selec (Friendship Selection)
 data Form
   = Top
   | Bot
-  | PrpF Prp
+  | PrpF Prp --TODO or should I write the Prp seperately?
   | Neg Form
   | Conj [Form]
   | Disj [Form]
-  | Impl Form Form
-  -- | Infl Double Form -- TODO add dynamics
-  -- | Selec Double Form
+  | Impl Form Form --TODO or should I do this using an abbreviation?
+  | Update UpOperator Form --TODO or should I write the updates separately? did this so I could have a sequence of them
   deriving (Eq, Show, Ord) --Eq needed in simStep :)
 
 
+
 --Abbreviations
+
+--TODO are these even needed?
 
 --equivalence <->
 equiv :: Form -> Form -> Form
 equiv f g = Conj [Impl f g, Impl g f]
 
+--XOR
 xor :: Form -> Form -> Form
 xor f g = Disj [Conj [f, Neg g], Conj [Neg f, g]]
 
 
---TODO more abbreviations involcing dynamics, e.g. sequence of updates
+--sequence of updates, no restriction on which type and what tau is used
+--simStep will delete consecutive selec operations
+updateSeq :: [UpOperator] -> Form -> Form
+updateSeq = flip $ foldr Update
 
+
+--TODO more abbreviations?
 
 {-
 Simplify a formula to an equivalent formula.
@@ -96,13 +114,19 @@ simStep (Impl Top f)    = simStep f
 simStep (Impl f Bot)    = Neg (simStep f)
 simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
---TODO include dynamics
---simStep (Infl _ Bot)    = Bot
---simStep (Infl _ Top)    = Top
---simStep (Infl tau f)    = Infl tau (simStep f)
---simStep (Selec _ Bot)   = Bot
---simStep (Selec _ Top)   = Top
---simStep (Selec tau f)   = Selec tau (simStep f)
+
+--dynamics
+simStep (Update _ Bot)  = Bot
+simStep (Update _ Top)  = Top
+--Friendship selection: if applied twice in a row with different tau, the first applied is irrelevant
+--ACHTUNG TODO this only applies to the basic version, for variations think about it more!
+simStep (Update (Selec tau) (Update (Selec _) f)) = simStep (Update (Selec tau) f)
+--After selec 1, influence won't change anything
+--ACHTUNG TODO das ist nur korrekt ohne die Variations
+simStep (Update (Infl _) (Update (Selec 1) f)) = Update (Selec 1) (simStep f)
+simStep (Update up f)   = Update up (simStep f)
+
+
 
 
 
@@ -123,6 +147,14 @@ instance Arbitrary Prp where
 
 
 {-
+generate Arbitrary Update Operator
+-}
+
+instance Arbitrary UpOperator where
+  arbitrary = oneof [ Infl <$> choose (0,1)
+                    , Selec <$> choose (0,1)]
+
+{-
   Generate arbitrary sized formulas.
   Adapted from Symbolic-Topo-E-Models.Syntax.
 -}
@@ -141,8 +173,7 @@ instance Arbitrary Form where
                              , Conj <$> listOf st
                              , Disj <$> listOf st
                              , Impl <$> st <*> st
-                             --, Infl <$> choose (0,1) <*> st -- TODO is this a save way to get a random tau?
-                             --, Selec <$> choose (0,1) <*> st
+                             , Update <$> (arbitrary::Gen UpOperator) <*> st
                              ]
           where
             st = randomForm (n `div` 3)
