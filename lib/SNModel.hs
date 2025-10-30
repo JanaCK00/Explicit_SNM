@@ -9,7 +9,7 @@ import Test.QuickCheck
 
 import qualified Data.Map.Strict as M -- TODO do I need strict here?
 import qualified Data.Set as S -- TODO do I need strict here?
-import Data.Map.Strict ((!))
+--import Data.Map.Strict ((!))
 import Data.Set (Set)
 import SetTheory
 
@@ -32,17 +32,16 @@ type Relation = M.Map Agent (Set Agent) --every agent should be a key
 
 
 {-
-TODO Is it enough to just assume that the sets and hence the maps will never be empty?
-TODO do I even get a benefit from representing these as sets?? especially bc
-I keep converting them to lists and back ;)
-BUT: they might help me for uniqueness... (keys in Maps are unique anyways)
+All sets/maps should by def be non-empty. This isn't enforced, but
+TODO check non-emptiness before checking formulas
 -}
 data SNModel = SNM
  { agents :: Set Agent
- , positions :: M.Map Topic (Set Position)
+ , positions :: M.Map Topic (Set Position) --TODO I could combine this with the val map...
  , rel :: M.Map Topic Relation --the social networks, every topic should be a key
  , val :: M.Map Position (Set Agent) --the valuation, every position should be a key
  } deriving (Eq, Show)
+
 
 {-
 translation from val to dual.
@@ -50,22 +49,27 @@ translation from val to dual.
   - decided to have tuple as key, bc I never need the full set of positions of an agent
 
 TODO look into caching when it's used several times
+PROBLEM, it changes when positions change! And it's super expensive to compute.
+Also I think it's not necessary :)
 -}
-agentPos :: SNModel -> M.Map (Agent, Topic) (Set Position)
-agentPos (SNM agents' positions' _ val') = M.fromList[((ag, t), theirPs ag t)| ag <- S.toList agents', t <- M.keys positions'] where
-    theirPs ag t = S.fromList [p | p <- S.toList $ positions' ! t, ag `S.member` (val' ! p)]
+--agentPos :: SNModel -> M.Map (Agent, Topic) (Set Position)
+--agentPos (SNM agents' positions' _ val') = M.fromList[((ag, t), theirPs ag t)| ag <- S.toList agents', t <- M.keys positions'] where
+    --theirPs ag t = S.fromList [p | p <- S.toList $ positions' ! t, ag `S.member` (val' ! p)]
 
 {-
 Given a positions Map (M.Map Topic (Set Position)), returns a Set of all positions
 -}
 allPos :: M.Map Topic (Set Position) -> Set Position
-allPos = S.unions . M.elems
+allPos = S.unions
+{-
+TODO alternatively I could make the function from SNModel and use M.keys(Set) val
+-}
 
 
 {-
 TODO would it make a difference to use Int instead of String?
-With string I can make more readable examples
-but in generation I only ever use "1", "2" a.s.o. anyway...
+I don't think si if it's IN the newtype. but maybe, if I tried to get rid of the newtype altogether...
+  but then it would get unreadable for real!
 -}
 newtype Agent = Ag String deriving (Eq, Show, Ord) --Set needs Ord, Map needs Ord for key
 newtype Topic = Tpc String deriving (Eq, Show, Ord)
@@ -75,20 +79,19 @@ data Position = Pos { posTopic:: Topic, position :: String} deriving (Eq, Show, 
     I'm sure every position is unique across topics. (and I can always get out the topic)
     -}
 
---TODO do I benefit from using Set here?
 --default Agents for usage in random generation
 defaultAgents :: Set Agent
 defaultAgents = S.fromList $ map (Ag . show) [(1::Int)..nrAgs] where
-  nrAgs = 50 --CHANGE number of agents if needed
+  nrAgs = 100 --CHANGE number of agents if needed
 
 
 
 --defaultPositions for usage in random generation
 defaultPositions :: M.Map Topic (Set Position)
 defaultPositions = M.fromList [(t, ps t)| t <- map (Tpc . show) [(1::Int)..nrTpcs]] where
-  nrTpcs = 30 --CHANGE number of topics if needed
+  nrTpcs = 10 --CHANGE number of topics if needed
   ps topic = S.fromList $ map (Pos topic . show) [(1::Int)..nrPos] where
-    nrPos = 30 --CHANGE number of positions per topic if needed
+    nrPos = 10 --CHANGE number of positions per topic if needed
 
 
 
@@ -164,6 +167,10 @@ ac = S.fromList [alice, carol]
 bc = S.fromList [bob, carol]
 abc = S.fromList [alice, bob, carol]
 
+{-
+TODO construct better example!
+this one hardly changes for the Infl operation
+-}
 exampleSmall :: SNModel
 exampleSmall = SNM abc positions' rel' val' where
     positions' = M.fromList [(books, booksPositions), (games, gamesPositions), (sports, sportsPositions)]
@@ -175,18 +182,23 @@ exampleSmall = SNM abc positions' rel' val' where
 
 
 {-
+ TODO why did she use List here instead of set? Is it because impure stuff that can't handle folds?
+ and also: I think a one time conversion from Set Agent to [Agent] is better than using subsetOf in a fold anyway
+ bc. it uses to List and from list everytime
+
   Given a list of Agents, generate a random Relation (M.Map Agent (Set Agent))
   adapted from symbolic-topo-e-models.Explicit.kripkeModels
 
-  TODO why did she use List here instead of set? To patternmatch more easily?
-  but in the usage I have to convert defaultAgents to lists every time...
+
 -}
 
-randomRel :: [Agent] -> Gen Relation
-randomRel [] = return M.empty
-randomRel (ag:ags) = do
-    thisAgsFriends <- M.singleton ag . S.fromList <$> sublistOf (ag:ags)
-    rest <- randomRel ags
+--ACHTUNG ich glaube, das hat vorher nicht funktionier!! weil ich keine symmetrischen Relationen habe
+--probierter fix: die erste Liste wird unverändert weitergereicht, die zweite ist das rekurive element
+randomRel :: [Agent] -> [Agent] -> Gen Relation
+randomRel _ [] = return M.empty
+randomRel allAgs (ag:ags) = do
+    thisAgsFriends <- M.singleton ag . S.fromList <$> sublistOf allAgs
+    rest <- randomRel allAgs ags
     return $ M.union rest thisAgsFriends
 
 {-
@@ -197,7 +209,7 @@ randomRel (ag:ags) = do
 randomRelMap :: [Agent] -> [Topic] -> Gen (M.Map Topic Relation)
 randomRelMap _ [] = return M.empty
 randomRelMap ags (t:tpcs) =  do
-    thisTpcsRel <- M.singleton t <$> randomRel ags
+    thisTpcsRel <- M.singleton t <$> randomRel ags ags
     rest <- randomRelMap ags tpcs
     return $ M.union rest thisTpcsRel
 
@@ -218,7 +230,7 @@ randomVal ags (p:pos) = do
 
 instance Arbitrary SNModel where
   arbitrary = do
-    --TODO limit some stuff?
+    --TODO limit some stuff? but it's less necessary, bc I dont do close it under reflexivity and transitivity
     let ags = defaultAgents
         pos = defaultPositions
     randomRels <- randomRelMap (S.toList ags) (M.keys pos)
