@@ -7,6 +7,7 @@ import Test.Hspec.QuickCheck (prop)
 import SNModel
 import Semantics
 import TestHelpers
+import Syntax
 
 spec :: Spec
 spec = do
@@ -32,9 +33,15 @@ spec = do
         prop "Arbitrary SNModel has non-empty set of agents"  $ do
             \snm -> nonEmptyPos (snm::SNModel)
 
+{-}
     describe "Testing for valid positions (topics map to only positions that belong to them)" $ do
         prop "Arbitrary SNModel has valid positions map" $ do
             \snm -> validPositions (snm::SNModel)
+
+            -}
+    describe "Testing for unqique positions across topics" $ do
+        prop "Arbitrary SNModel has pairwise disjoint Positions across Topics" $ do
+            \snm -> disjointPositionSets (snm::SNModel)
 
     {-describe "Testing for no duplicates in the model" $ do
         prop "Arbitrary SNModel has no duplicates in fields" $ do
@@ -45,16 +52,21 @@ spec = do
         prop "Arbitrary SNModel is a social networks model" $ do
             \snm -> isValidSNModel (snm::SNModel)
 
---TODO find out how to get random valud taus here....
-
-    describe "Testing if consecutive application of friendship selection doesn't depend on first" $ do
+    describe "Testing propoerties of update operations" $ do
         prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
-            \snm -> consecutiveSelec (snm::SNModel)
-
-    describe "Testing if infl after Selec 1 doesn't do anything" $ do
+            \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::SpecialDouble) (i2::SpecialDouble)
         prop "Arbitrary SNModel doesn't change with Infl after a Selec 1" $ do
-            \snm ->consInflSelecOne  (snm::SNModel)
+            \snm i1 -> consInflSelecOne  (snm::SNModel) (i1::SpecialDouble)
+        prop "Arbitrary SNModel has reflexive relations after a selec operation" $ do
+            \snm i1 -> selecMakesRefl (snm::SNModel) (i1::SpecialDouble)
+        prop "Arbitrary SNModel has symmetric relations after selec operation" $ do
+            \snm i1 -> selecMakesSym (snm::SNModel) (i1::SpecialDouble)
 
+
+--takes a while atm (updates are slow), maybe comment out when checking other stuff ;)
+    describe "Testing the simplify function" $ do
+        prop "Arbitrary formula evaluates to the same as it's simplified version on Arbitrary SNModel" $ do
+            \snm f -> simplifyWorks (snm::SNModel) (f::Form)
 
 
 
