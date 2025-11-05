@@ -13,6 +13,8 @@ import Data.Set
   , intersection
   , union
   )
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Set qualified as S
 import Test.QuickCheck
   ( Arbitrary
@@ -25,8 +27,8 @@ import Test.QuickCheck
   , listOf
   , listOf1
   )
---import qualified Data.Map.Strict as M
---import Data.Map.Strict ((!))
+import qualified Data.Map.Strict as M
+import Data.Map.Strict ((!))
 import Test.QuickCheck.Gen (suchThat)
 
 --TODO fix cyclical imports
@@ -42,12 +44,15 @@ import Test.QuickCheck.Gen (suchThat)
 -}
 
 --TODO delete?
---type World = Int
---type Relation = M.Map World (Set World)
+type Agent = Int
+type AgentSet = IntSet
+type Relation = M.Map Agent AgentSet --every agent should be a key
 
 --I took this out bc I defined it in SNModel.hs and can't have cyclical imports
 --type Relation = M.Map Agent (Set Agent)
 
+
+{- DELETE FROM ...? don't think I need it...
 {-
   Close a given set of sets under arbitrary unions. Recursively add binary unions
   until a fixpoint is reached and add the empty set (which is the empty union).
@@ -77,14 +82,35 @@ arbIntersection sets
   | sets == S.empty = error "Cannot take the intersection of the empty set."
   | otherwise = foldr intersection (elemAt 0 sets) sets
 
+  DELETE until ... ? -}
+
 {-
   Make a given relation reflexive. Given a world w (the key), add w to its own
   image (val).
 -}
 
---TODO fix if needed, I changed Relation
---makeReflexive :: Relation -> Relation
---makeReflexive = M.mapWithKey S.insert
+--adapted to fit my Relation definition
+makeReflexive :: Relation -> Relation
+makeReflexive = M.mapWithKey IntSet.insert
+
+--TODO is checking better than the makeReflexive for testing?
+--isReflexive :: Relation -> Bool
+--isReflexive = M.foldrWithKey (\k s b -> (k `IntSet.member`s) && b) True
+
+
+{- old version}
+makeSymmetric :: Relation -> Relation
+makeSymmetric rel = M.mapWithKey (\k s -> s `IntSet.union` friendsOfAg k) rel where
+  friendsOfAg ag = IntSet.fromList $ filter (\k -> ag `IntSet.member` (rel ! k)) (M.keys rel)
+-}
+
+
+--TODO Check if this works
+--given a Relation, make it symmetric
+makeSymmetric :: Relation -> Relation
+makeSymmetric rel = M.foldrWithKey addSym rel rel where --TODO use strict fold here?
+    addSym ag friendsOfAg acc =
+      foldr (\friend acc' -> M.insertWith IntSet.union friend (IntSet.singleton ag) acc') acc (IntSet.toList friendsOfAg)
 
 {-
   Recursively make a given relation transitive. For each world, given its current
@@ -92,11 +118,11 @@ arbIntersection sets
   until a fixpoint is reached.
 -}
 
---TODO fix if needed, bc I changed Relation
---makeTransitive :: Relation -> Relation
---makeTransitive rel = lfp makeTransOnce rel where
-  --makeTransOnce = M.map addRel
-  --addRel val = S.unions [rel ! w | w <- S.toList val] `S.union` val
+--TODO fix if needed, bc I changed Relation (right now it's as it was, only changed to IntSet)
+makeTransitive :: Relation -> Relation
+makeTransitive rel = lfp makeTransOnce rel where
+  makeTransOnce = M.map addRel
+  addRel val = IntSet.unions [rel ! w | w <- IntSet.toList val] `IntSet.union` val
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
@@ -120,6 +146,10 @@ setOf1 = fmap S.fromList . listOf1
 
 setElements :: Set a -> Gen a
 setElements = elements . S.toList
+
+--added this for when type Agent = Int and sets of agents is IntSet
+intSetElements :: IntSet -> Gen Int
+intSetElements = elements . IntSet.toList
 
 isOfSize :: Set a -> Int -> Bool
 isOfSize set k = S.size set == k
