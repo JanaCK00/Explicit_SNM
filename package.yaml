@@ -3,7 +3,7 @@ version: 0.1.0.0
 synopsis: TODO
 description: TODO
 maintainer:
-  - David Quinn Alvarez <dqalombardi@proton.me>
+  - David Quinn Alvarez <dqalombardi@proton.me> #TODO change?
   - Paulius Skaisgiris <paulius.skaisgiris@gmail.com>
   - Djanira dos Santos Gomes <djaniradsgomes@gmail.com>
 category: Logic
@@ -18,6 +18,8 @@ dependencies:
   - graphviz
   - hspec
   - smcdel
+  - matrix #TODO added for trying out, maybe remove again
+  - vector ##TODO added for trying out, maybe remove again
 
 library:
   source-dirs: lib
