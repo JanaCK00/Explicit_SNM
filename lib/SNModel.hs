@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use newtype instead of data" #-}
-
 module SNModel where
 
 --TODO only necessary imports
@@ -9,9 +6,9 @@ import Test.QuickCheck
   , Gen
   , elements
   , sublistOf  )
-
-import qualified Data.Map.Strict as M -- TODO do I need strict here?
-import qualified Data.Set as S -- TODO do I need strict here?
+import Test.QuickCheck.Gen (chooseInt)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S -- Set is strict ;)
 --import Data.Map.Strict ((!))
 import Data.Set (Set)
 import Data.IntSet (IntSet)
@@ -32,23 +29,23 @@ Social networks don't have to satisfy any properties
 (i.e. they can be reflexive and non-symmetric).
 -}
 
---TODO decide where to define this, once I have fixed the cyclic import issue with SetTheory
---put it in SetTheory for now
---type AgentSet = IntSet
---type Relation = M.Map Agent IntSet --every agent should be a key
-
 
 {-
-All sets/maps should by def be non-empty. This isn't enforced, but
-TODO check validity of model before checking formulas
+Assumptions on the form of SNM: (that aren't enforced here, but should be checked before working with a model)
+
+(1) All sets/maps should by def be non-empty.
+(2) The sets of Positions are pairwise disjoint across topics. TODO manually double them when a provded model violates this.
+(3) All Maps are full (every Topic or Positions respectively is a key (even if it just maps to the empty set))
 -}
--- LOOK UP : can I use IntMaps? are they good
+-- TODO LOOK UP : can I use IntMaps? are they good
+--TODO change to have dual here
 data SNModel = SNM
- { agents :: AgentSet
- , positions :: M.Map Topic (Set Position) --the sets should be pairwise disjoint -- ? TODO I could combine this with the val map...
+ { agents :: AgentSet --TODO ?maybe have this as a list, bc I don't check for membership here, but rather can use it in recursion in update functions??
+ , positions :: M.Map Topic (Set Position) --pariwise disjoint sets. this could actually also be a map of sizes and then have the topic in the position like i planned originally...and you only need the list of positions for a topic to go through for the annpying case of Infl 0...
  , rel :: M.Map Topic Relation --the social networks, every topic should be a key
  , val :: M.Map Position AgentSet --the valuation, every position should be a key
  } deriving (Eq, Show)
+
 
 
 {-
@@ -74,51 +71,28 @@ allPos = S.unions
 TODO alternatively I could make the function from SNModel and use M.keys(Set) val
 -}
 
+--definitions for Agent/Relation in SetTheory.hs
 
-{-
-  IDEA just have strings for Agent
-  T 1 , P 1
-  maybe have agents just integer, otherwise use monad to map over wrappers
-  Topic and Positions have Ints
-  IDEA newtype is bad, use data instead
--}
---type Agent = Int -- put it in SetTheory for now
-data Topic = T Int deriving (Eq, Show, Ord)  --Set needs Ord, Map needs Ord for key
+newtype Topic = T Int deriving (Eq, Show, Ord)  --Set needs Ord, Map needs Ord for key
+newtype Position = P Int deriving (Eq, Show, Ord)
 
---IDEA assume positions are different (disjoint sets) and then don't include the topic here
---if there would be two that are the same, you can manually double it,
---MAKE SURE it works in arbitrary generation!!
-data Position = P Int deriving (Eq, Show, Ord)
 
+--CHANGE default values if neded
+nrAgs, nrTpcs, nrPosPerT, nrPosTotal :: Int
+nrAgs = 50
+nrTpcs = 10
+nrPosPerT = 10 --number of positions per Topic, TODO go change this where it's used TODO is it ok if it can't generate more variety in the nr of pos?
+nrPosTotal = 100 --number of positions in total, nrPosTotal >= nrTpcs TODO just trying if this works
 
 --default Agents for usage in random generation
 defaultAgents :: AgentSet
-defaultAgents = IntSet.fromList [1..nrAgs] where
-  nrAgs = 50 --CHANGE number of agents if needed
+defaultAgents = IntSet.fromList [1..nrAgs]
 
-
-
---defaultPositions for usage in random generation
+--TODO change where this is used
+--default Positions for usage in random generation
 --make sure the positions are different across topics
 defaultPositions :: M.Map Topic (Set Position)
-defaultPositions =  M.fromList [ (T t, S.fromList [P p | p <- [(t-1)*nrPos + 1 .. t*nrPos]])| t <- [1..nrTpcs]] where
-  nrTpcs = 10 --CHANGE number of topics if needed
-  nrPos  = 10 --CHANGE number of positions per topic if needed
-
-{-
-Arbitrary generation of Agents, Topics and Positions.
-needed for random generation of formulas (see Syntax.hs)
-(bc. agents, topics and positions show up in Propositions)
-
-OR: would a defined defaultVocab be better? see Syntax.hs
--}
-
-
-instance Arbitrary Topic where
-  arbitrary = do elements $ M.keys defaultPositions
-
-instance Arbitrary Position where
-  arbitrary = do setElements $ allPos defaultPositions   --TODO List Conversion in setElements --TODO computes allPos everytime!!!
+defaultPositions =  M.fromList [ (T t, S.fromList [P p | p <- [(t-1)*nrPosPerT + 1 .. t*nrPosPerT]])| t <- [1..nrTpcs]]
 
 
 {-
@@ -203,71 +177,91 @@ exampleCircleFriendship = SNM group positions' rel' val' where
 
 
 
+
 {-
- TODO why did she use List here instead of set? Is it because impure stuff that can't handle folds?
- and also: I think a one time conversion from Set Agent to [Agent] is better than using subsetOf in a fold anyway
- bc. it uses to List and from list everytime
-
-  Given a list of Agents, generate a random Relation (M.Map Agent (Set Agent))
-  adapted from symbolic-topo-e-models.Explicit.kripkeModels
-
-
+these work with the provided lists of agents/topics/positions, not only with the default :)
+so it can also be used for generating a model based on user input...
+It uses lists instead of sets, bc the sublist function would require list conversion anyway
 -}
 
---IDEA make sure that positions are different (without having the topic in the data)
---ACHTUNG ich glaube, das hat vorher nicht funktionier!! weil ich keine symmetrischen Relationen habe
---probierter fix: die erste Liste wird unverändert weitergereicht, die zweite ist das rekurive element
+{-
+Given a list of agents (duplicate-free), (second argument is the recursively decreasing one),
+generates an arbitrary binary relation.
+-}
 randomRel :: [Agent] -> [Agent] -> Gen Relation
 randomRel _ [] = return M.empty
 randomRel allAgs (ag:ags) = do
-    thisAgsFriends <- M.singleton ag . IntSet.fromList <$> sublistOf allAgs
+    thisAgsFriends <- IntSet.fromList <$> sublistOf allAgs
     rest <- randomRel allAgs ags
-    return $ M.union rest thisAgsFriends
+    return $ M.insert ag thisAgsFriends rest
 
 {-
-  Given a list of agents and a list of topics, generates an arbitrary
+  Given a list of agents and a list of topics (both duplicate-free), generates an arbitrary
   relation for each topic. This function applies randomRel to each topic.
   adapted from symbolic-topo-e-models.Explicit.kripkeModels
 -}
 randomRelMap :: [Agent] -> [Topic] -> Gen (M.Map Topic Relation)
 randomRelMap _ [] = return M.empty
 randomRelMap ags (t:tpcs) =  do
-    thisTpcsRel <- M.singleton t <$> randomRel ags ags
+    thisTpcsRel <- randomRel ags ags
     rest <- randomRelMap ags tpcs
-    return $ M.union rest thisTpcsRel
+    return $ M.insert t thisTpcsRel rest
 
 {-
-Given a list of agents and a list of positions, generate a random Valuation
+Given a list of agents and a list of positions (both duplicate-free), generate a random Valuation
 -}
 randomVal :: [Agent] -> [Position] -> Gen (M.Map Position AgentSet)
 randomVal _ [] = return M.empty
 randomVal ags (p:pos) = do
-    thisPosAgs <- M.singleton p . IntSet.fromList <$> sublistOf ags
+    thisPosAgs <- IntSet.fromList <$> sublistOf ags
     rest <- randomVal ags pos
-    return $ M.union rest thisPosAgs
+    return $ M.insert p thisPosAgs rest
 
 {-
   Generate an arbitrary Social Network model.
     adapted from symbolic-topo-e-models.Explicit.kripkeModels
 -}
 
+
+--TODO decide if topics with just one positions even make sense...
+--assumes length list >= Int
+--takes an Int and a list. generates a partition with exactly Int number of  non-empty subsets
+randomPart :: Int -> [a] -> Gen [[a]]
+randomPart 1 xs = return [xs]
+randomPart l xs = do
+  let n = length xs
+  thisLength <- chooseInt (1, n - l + 1) --make sure the rest of the (l-1) partitions still get at least one element each
+  let (first, rest) = splitAt thisLength xs
+  restPart <- randomPart (l-1) rest
+  return $ first : restPart
+
+
+{-
+given a list of topics and a list of positions (both duplicate free & non-empty, ASSUMES length ps>=length ts)
+generate a mapping from topics to sets of positions (pariwise disjoint, non-empty)
+-}
+randomPosMap :: [Topic] -> [Position] -> Gen (M.Map Topic (Set Position))
+randomPosMap ts ps = do
+  partition <- randomPart (length ts) ps
+  return $ M.fromList $ zipWith (\t partP -> (t, S.fromList partP)) ts partition
+
+
+
 instance Arbitrary SNModel where
   arbitrary = do
-    --TODO limit some stuff? but it's less necessary, bc I dont do close it under reflexivity and transitivity
-    let ags = defaultAgents
-        pos = defaultPositions
-    randomRels <- randomRelMap (IntSet.toList ags) (M.keys pos) --TODO list conversion
-    randomV <- randomVal (IntSet.toList ags) (S.toList $ allPos pos)
-    return (SNM ags pos randomRels randomV)
-
---TODO is this the only way to generate in ghci?
-getGenModel ::  Gen SNModel
-getGenModel = arbitrary :: Gen SNModel
+    --TODO limit some stuff? (not necessary, bc I don't close under reflexivity/transitivity?)
+    let ags = [1..nrAgs]
+        tpcs = map T [1..nrTpcs]
+        pos = map P [1..nrPosTotal]
+    randomTPMap <- randomPosMap tpcs pos
+    randomRels <- randomRelMap ags tpcs
+    randomV <- randomVal ags pos
+    return (SNM defaultAgents randomTPMap randomRels randomV)
 
 {-
 usage in ghci:
 import Test.QuickCheck
-myModel <- generate getGenModel
+myModel <- generate arbitrary :: IO SNModel
 -}
 
 
