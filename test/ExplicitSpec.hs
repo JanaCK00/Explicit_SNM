@@ -69,6 +69,15 @@ spec = do
             \snm f -> simplifyWorks (snm::SNModel) (f::Form)
 
 
+    describe "Tests for formula generation and the simplify function" $ do
+        prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
+            \f -> not $ containsEmpty (f::Form)
+        prop "Dummy to see what percentage of generated Forms evaluates to Top or Bot" $ do
+            prop_trivialForm
+        prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
+            \f -> topBotpurity (f::Form)
+
+
 
 {-
 TODO think of things to check

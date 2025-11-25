@@ -31,58 +31,13 @@ import qualified Data.Map.Strict as M
 import Data.Map.Strict ((!))
 import Test.QuickCheck.Gen (suchThat)
 
---TODO fix cyclical imports
---import SNModel (Relation)
 
+--TODO describe what this file does ;)
 
-{-
-  Helper functions with respect to set theory and relations.
-
-  Note: arbitrary and finite unions/intersections coincide on finite models,
-  so we compute union (arbitrary) and intersection (finite) in the same way;
-  we only need to manually add the empty set in the arbitrary union.
--}
-
---TODO delete?
 type Agent = Int
 type AgentSet = IntSet
 type Relation = M.Map Agent AgentSet --every agent should be a key
 
---I took this out bc I defined it in SNModel.hs and can't have cyclical imports
---type Relation = M.Map Agent (Set Agent)
-
-
-{- DELETE FROM ...? don't think I need it...
-{-
-  Close a given set of sets under arbitrary unions. Recursively add binary unions
-  until a fixpoint is reached and add the empty set (which is the empty union).
--}
-closeUnderUnion :: (Ord a) => Set (Set a) -> Set (Set a)
-closeUnderUnion =
-  S.insert S.empty . lfp (\set -> set `union` newsets set) where
-  newsets set = S.fromList [ s1 `union` s2 | let listOfSets = S.toList set
-                                           , s1 <- listOfSets
-                                           , s2 <- listOfSets
-                           ]
-
-{-
-  Close a given set of sets under arbitrary intersections. Recursively add binary
-  intersections until a fixpoint is reached.
--}
-closeUnderIntersection :: (Ord a) => Set (Set a) -> Set (Set a)
-closeUnderIntersection = lfp (\set -> set `union` newsets set) where
-  newsets set = S.fromList [ s1 `intersection` s2 | let listOfSets = S.toList set
-                                                  , s1 <- listOfSets
-                                                  , s2 <- listOfSets
-                           ]
-
--- Return the arbitrary intersection of a set of sets.
-arbIntersection :: (Eq a, Ord a) => Set (Set a) -> Set a
-arbIntersection sets
-  | sets == S.empty = error "Cannot take the intersection of the empty set."
-  | otherwise = foldr intersection (elemAt 0 sets) sets
-
-  DELETE until ... ? -}
 
 {-
   Make a given relation reflexive. Given a world w (the key), add w to its own
@@ -108,9 +63,9 @@ makeSymmetric rel = M.mapWithKey (\k s -> s `IntSet.union` friendsOfAg k) rel wh
 --TODO Check if this works
 --given a Relation, make it symmetric
 makeSymmetric :: Relation -> Relation
-makeSymmetric rel = M.foldrWithKey addSym rel rel where --TODO use strict fold here?
+makeSymmetric rel = M.foldrWithKey addSym rel rel where -- TODO use strict fold? even necessaty if M is strict.map? I do! think so
     addSym ag friendsOfAg acc =
-      foldr (\friend acc' -> M.insertWith IntSet.union friend (IntSet.singleton ag) acc') acc (IntSet.toList friendsOfAg)
+      foldr (\friend acc' -> M.insertWith IntSet.union friend (IntSet.singleton ag) acc') acc (IntSet.toList friendsOfAg) --TODO list conversion
 
 {-
   Recursively make a given relation transitive. For each world, given its current

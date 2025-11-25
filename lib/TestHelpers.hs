@@ -11,7 +11,7 @@ import Semantics
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Test.QuickCheck
-  ( Arbitrary (..))
+  ( Arbitrary (..), Property, classify, property)
 import Test.QuickCheck.Gen (genDouble)
 import SetTheory
 
@@ -116,7 +116,47 @@ simplifyWorks m f = (m |= f) == (m |= simplify f)
 --check if the constrcucted full relation is symmetric and reflexive on some given SNModel
 
 symAndRefl :: SNModel -> Bool
-symAndRefl m = (makeFullRel m == makeReflModel (makeFullRel m)) && (makeFullRel m == makeSymModel (makeFullRel m))
+symAndRefl m = (makeFullRelModel m == makeReflModel (makeFullRelModel m)) && (makeFullRelModel m == makeSymModel (makeFullRelModel m))
+
+--check if a formula simplifies to Top or Bot
+isTrivial :: Form -> Bool
+isTrivial f = f' == Top || f' == Bot where
+    f' = simplify f
 
 
+--TODO delete !.!
+prop_trivialForm :: Form -> Property
+prop_trivialForm f =
+  classify (isTrivial f) "simplifies to Top/Bot" $
+    property True
 
+
+--check if a formula contains empty lists after Conj or Disj
+containsEmpty :: Form -> Bool
+containsEmpty (Conj xs) = null xs || any containsEmpty xs
+containsEmpty (Disj xs) = null xs || any containsEmpty xs
+containsEmpty (Update _ f) = containsEmpty f
+containsEmpty (Impl f g) = containsEmpty f || containsEmpty g
+containsEmpty (Neg f) = containsEmpty f
+containsEmpty _ = False
+
+--check if a simplified Form contains NO occurance of Top/Bot
+topBotFree :: Form -> Bool
+topBotFree = allSubf freePred where
+    freePred (Update _ f) = allSubf freePred f --THIS IS THE PROBLEM Probably
+    freePred (PrpF _) = True
+    freePred _ = False --Includes Top, Bot (plus for the sake of pattern exhaustion, all complex cases, but those should be handled by allSubf)
+
+{-
+allSubf :: (Form -> Bool) -> Form -> Bool
+allSubf predi (Neg f)      = allSubf predi f
+allSubf predi (Conj xs)    = all (allSubf predi) xs
+allSubf predi (Disj xs)    = all (allSubf predi) xs
+allSubf predi (Impl f1 f2) = allSubf predi f1 && allSubf predi f2
+allSubf predi f            = predi f -- includes Top, Bot, PrpF, Update
+-}
+
+--check if a simplified Form either simplifies to be trivial, or simplifies so it doesn't contain any occurances of Top/Bot
+topBotpurity :: Form -> Bool
+topBotpurity f = f' == Top || (f'== Bot || topBotFree f') where
+    f' = simplify f
