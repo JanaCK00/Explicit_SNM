@@ -47,7 +47,7 @@ and Selec (Friendship Selection)
 data Form
   = Top
   | Bot
-  | PrpF Prp --Adopted and Connected
+  | PrpF Prp --Adopted and Connected, TODO have these explicitely?
   | Neg Form
   | Conj [Form]
   | Disj [Form]
@@ -189,10 +189,12 @@ madeOfAdopSelec = allSubf selecAdopPred where
   selecAdopPred _                     = True --includes Top, Bot, Update Selec, PrpF Adopted (plus for the sake of pattern exhaustion all the complex constructors)
 
 
---Wuhuu I think using sortOn makes it much faster <3
---empty lists are possible, but shouldn't be a problem
---TODO groupByOperator is about same updates with different formulas eg (cross tau m f1 AND cross tau m f2) is equivalent to cross ta (f1 AND f2)
---creates a group out of all the ones that DON'T start with an update
+{-
+Takes a list-Formula (Conj or Disj) and groups said list according to leading Update operator.
+Formulas that don't start with an update operator are grouped together. Then, the common update operator
+is bubbled up.
+For Conj [] or Disj [], nothing happends.
+-}
 groupByOperator :: Form -> Form
 groupByOperator (Conj xs) = Conj (concatMap (bubbleUpOp Conj) (L.groupBy hasSameOp (L.sortOn operator xs))) --if this is a singleton list, it will be simplified in the next round
 groupByOperator (Disj xs) = Disj (concatMap (bubbleUpOp Disj) (L.groupBy hasSameOp (L.sortOn operator xs)))
@@ -250,7 +252,7 @@ instance Arbitrary Prp where
   arbitrary = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
                     , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
                     ]
-    where arbitraryAg = chooseInt (1, nrAgs)
+    where arbitraryAg = chooseInt (1, defaultNrAgs)
           arbitraryPos = P <$> chooseInt (1, nrPosTotal)
           arbitraryTpc = T <$> chooseInt (1, nrTpcs)
 

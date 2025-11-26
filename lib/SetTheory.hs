@@ -9,9 +9,6 @@ module SetTheory where
 import SMCDEL.Internal.Help (lfp)
 import Data.Set
   ( Set
-  , elemAt
-  , intersection
-  , union
   )
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
@@ -27,57 +24,42 @@ import Test.QuickCheck
   , listOf
   , listOf1
   )
-import qualified Data.Map.Strict as M
-import Data.Map.Strict ((!))
 import Test.QuickCheck.Gen (suchThat)
+import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as IntMap
+
+--Adapted from symbolic-topo-e-models.SetTheory.hs
 
 
 --TODO describe what this file does ;)
 
 type Agent = Int
 type AgentSet = IntSet
-type Relation = M.Map Agent AgentSet --every agent should be a key
+type Relation = IntMap AgentSet --every agent should be a key
 
 
-{-
-  Make a given relation reflexive. Given a world w (the key), add w to its own
-  image (val).
--}
-
---adapted to fit my Relation definition
+--Given a Relation, make it reflexive.
 makeReflexive :: Relation -> Relation
-makeReflexive = M.mapWithKey IntSet.insert
-
---TODO is checking better than the makeReflexive for testing?
---isReflexive :: Relation -> Bool
---isReflexive = M.foldrWithKey (\k s b -> (k `IntSet.member`s) && b) True
+makeReflexive = IntMap.mapWithKey IntSet.insert
 
 
-{- old version}
+--Given a Relation, make it symmetric.
 makeSymmetric :: Relation -> Relation
-makeSymmetric rel = M.mapWithKey (\k s -> s `IntSet.union` friendsOfAg k) rel where
-  friendsOfAg ag = IntSet.fromList $ filter (\k -> ag `IntSet.member` (rel ! k)) (M.keys rel)
--}
-
-
---TODO Check if this works
---given a Relation, make it symmetric
-makeSymmetric :: Relation -> Relation
-makeSymmetric rel = M.foldrWithKey addSym rel rel where -- TODO use strict fold? even necessaty if M is strict.map? I do! think so
-    addSym ag friendsOfAg acc =
-      foldr (\friend acc' -> M.insertWith IntSet.union friend (IntSet.singleton ag) acc') acc (IntSet.toList friendsOfAg) --TODO list conversion
+makeSymmetric rel = makeSym (IntMap.toList rel) rel where
+  makeSym [] acc = acc
+  makeSym ((ag, friends):rest) acc = makeSym rest (IntMap.mapWithKey addMe acc) where
+    addMe a f | a `IntSet.member` friends = IntSet.insert ag f
+              | otherwise = f
 
 {-
-  Recursively make a given relation transitive. For each world, given its current
-  image, add all worlds reachable from any world in its image to the current image
+  Recursively make a given relation transitive. For each agent, given their current
+  friends group, add all agents reachable from any friend in their friends group
   until a fixpoint is reached.
 -}
-
---TODO fix if needed, bc I changed Relation (right now it's as it was, only changed to IntSet)
 makeTransitive :: Relation -> Relation
 makeTransitive rel = lfp makeTransOnce rel where
-  makeTransOnce = M.map addRel
-  addRel val = IntSet.unions [rel ! w | w <- IntSet.toList val] `IntSet.union` val
+  makeTransOnce = IntMap.map addRel
+  addRel val = IntSet.unions [rel IntMap.! w | w <- IntSet.toList val] `IntSet.union` val
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
@@ -85,7 +67,8 @@ makeTransitive rel = lfp makeTransOnce rel where
 setOneOf :: Set (Gen a) -> Gen a
 setOneOf = oneof . S.toList
 
-subsetOf :: (Arbitrary a, Ord a) => Set a -> Gen (Set a)
+--deleted Arbitrary a from type class constraint, bc. I want to use is for Positions
+subsetOf :: (Ord a) => Set a -> Gen (Set a)
 subsetOf = fmap S.fromList . sublistOf . S.toList
 
 subsetOf1 :: (Arbitrary a, Ord a) => Set a -> Gen (Set a)
