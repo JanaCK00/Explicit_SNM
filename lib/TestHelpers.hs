@@ -8,12 +8,10 @@ import qualified Data.Set as S
 --import Data.Set (Set)
 --import Data.List as L
 import Semantics
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
 import Test.QuickCheck
   ( Arbitrary (..), Property, classify, property)
 import Test.QuickCheck.Gen (genDouble)
-import SetTheory
+import qualified Data.IntMap.Strict as IntMap
 
 propo1 :: Form
 propo1 = PrpF (Adopted 1 (P 1))
@@ -29,20 +27,24 @@ check if a given SNModel maps every topic to a Relation and
 in each Relation every agent to some set of friends (which may be empty)
 -}
 fullRel :: SNModel -> Bool
-fullRel (SNM agents' positions' rel' _) = (M.size rel' == M.size positions') && fullRelAgs rel' where
-    fullRelAgs = all (\x -> M.size x == IntSet.size agents')
+fullRel (SNM nrAgents' positions' rel' _) = (M.size rel' == M.size positions') && fullRelAgs rel' where
+    fullRelAgs = all (\x -> IntMap.size x == nrAgents')
 
 
 {-
 check if a given SNModel maps every positions to a set of agents who have adopted it
 (which may be empty)
 -}
-fullVal :: SNModel -> Bool
-fullVal (SNM _ positions' _ val') = M.size val' == S.size (allPos positions')
+--fullVal :: SNModel -> Bool
+--fullVal (SNM _ positions' _ val') = M.size val' == S.size (allPos positions')
 
 --check if the set of agents in non-empty
-nonEmptyAgs :: SNModel -> Bool
-nonEmptyAgs = not . IntSet.null . agents
+--nonEmptyAgs :: SNModel -> Bool
+--nonEmptyAgs = not . IntSet.null . agents
+
+--check if the dual maps all topics to a map where all agents are mapped
+fullDual :: SNModel -> Bool
+fullDual (SNM nrAgents' positions' _ dual') = (M.keys dual' == M.keys positions') && all ((== [1..nrAgents']) . IntMap.keys) dual'
 
 --check if the set of topics in non-empty (by checking if the map isn't empty)
 nonEmptyTpcs :: SNModel -> Bool
@@ -62,7 +64,7 @@ validPositions (SNM _ positions' _ _) =  all everyPos (M.toList positions') wher
 --check if the sets of topics are pairwise disjoint
 --TODO check if this is correct
 disjointPositionSets :: SNModel -> Bool
-disjointPositionSets (SNM _ positions' _ _) = S.size (allPos positions') == foldr ((+) . S.size) 0 positions'
+disjointPositionSets (SNM _ positions' _ _) = S.size (S.unions positions') == foldr ((+) . S.size) 0 positions'
 
 
 {-}
@@ -75,8 +77,8 @@ noDuplicates (SNM agents' positions' rel' val') = noDups agents' && all noDups p
 --TODO extend if I write more
 --check all properties at once
 isValidSNModel :: SNModel -> Bool
-isValidSNModel snm = all (\f -> f snm) [fullRel, fullVal,
-                                        nonEmptyAgs, nonEmptyPos,
+isValidSNModel snm = all (\f -> f snm) [fullRel,
+                                         nonEmptyPos,
                                         nonEmptyTpcs, disjointPositionSets]
 
 
@@ -87,24 +89,24 @@ instance Arbitrary SpecialDouble where
 
 --check if for two consecutive Selecs, only the last applied matters
 consecutiveSelec :: SNModel -> SpecialDouble -> SpecialDouble -> Bool
-consecutiveSelec m (SpD d1) (SpD d2) = updSelec d1 m == updSelec d1 (updSelec d2 m)
+consecutiveSelec m (SpD d1) (SpD d2) = updSelecMatrix d1 m == updSelecMatrix d1 (updSelecMatrix d2 m)
 
 
 --test if an Infl after a Selec 1 doesn't change anything
 consInflSelecOne :: SNModel -> SpecialDouble  -> Bool
-consInflSelecOne m (SpD d1) = updSelec 1 m == updInfl d1 (updSelec 1 m) --(order is not accrordning to syntax ;))
+consInflSelecOne m (SpD d1) = updSelecMatrix 1 m == updInflPreComp d1 (updSelecMatrix 1 m) --(order is not accrordning to syntax ;))
 
 --TODO check more things I did in simplify
 
 
 --check if an application of Selec makes all relations reflexive
 selecMakesRefl :: SNModel -> SpecialDouble -> Bool
-selecMakesRefl m (SpD d1) = updSelec d1 m == makeReflModel (updSelec d1 m)
+selecMakesRefl m (SpD d1) = updSelecMatrix d1 m == makeReflModel (updSelecMatrix d1 m)
 
 
 --check if an application of Selec makes all relations symmetric
 selecMakesSym :: SNModel -> SpecialDouble -> Bool
-selecMakesSym m (SpD d1) = updSelec d1 m == makeSymModel (updSelec d1 m)
+selecMakesSym m (SpD d1) = updSelecMatrix d1 m == makeSymModel (updSelecMatrix d1 m)
 
 
 --checks if a Form evaluates to the same as its simplified version on a given SNModel

@@ -17,8 +17,10 @@ spec = do
     describe "Testing for full Maps" $ do
         prop "Arbitrary SNModel has complete Relations maps" $ do
             \snm -> fullRel (snm::SNModel)
-        prop "Arbitrary SNModel has a complete Valuation map" $ do
-            \snm -> fullVal (snm::SNModel)
+        prop "Arbitrary SNModel has full dual Maps" $ do
+            \snm -> fullDual (snm::SNModel)
+        --prop "Arbitrary SNModel has a complete Valuation map" $ do
+            -- \snm -> fullVal (snm::SNModel)
     --describe "Testing a falsifiable formula" $ do
         --prop "Arbitrary SNModel fulfills falsifiable formula" $ do
             -- \snm -> (snm::SNModel) |= propo1
@@ -26,11 +28,11 @@ spec = do
     will only be useful if I change generation away from using default sets
     -}
     describe "Testing for non-empty sets" $ do
-        prop "Arbitrary SNModel has non-empty set of agents"  $ do
-            \snm -> nonEmptyAgs (snm::SNModel)
-        prop "Arbitrary SNModel has non-empty set of agents"  $ do
+        --prop "Arbitrary SNModel has non-empty set of agents"  $ do
+           -- \snm -> nonEmptyAgs (snm::SNModel)
+        prop "Arbitrary SNModel has non-empty set of topics"  $ do
             \snm -> nonEmptyTpcs (snm::SNModel)
-        prop "Arbitrary SNModel has non-empty set of agents"  $ do
+        prop "Arbitrary SNModel has non-empty set of positions"  $ do
             \snm -> nonEmptyPos (snm::SNModel)
 
 {-}
