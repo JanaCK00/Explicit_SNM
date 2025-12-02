@@ -2,8 +2,8 @@ module Semantics where
 
 
 --TODO only necessary imports
-import Syntax ( Form(..), Prp(Connected, Adopted), UpOperator (Infl, Selec) )
-import SNModel ( SNModel(rel, dual, SNM), Position)
+import Syntax ( Form(..))
+import SNModel ( SNModel(rel, dual, SNM), Position, makeFullRelModel)
 import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -15,9 +15,10 @@ import qualified Data.Matrix as Mat
 import Data.Matrix (Matrix)
 import qualified Data.Vector as V
 import Data.Vector (Vector)
-import qualified Data.List as L (group, sort)
+import qualified Data.List as L (group, sort, nub)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
+import Data.Maybe ( isJust, fromJust )
 
 {-
 Semantics defined on Formulas as defined in Syntax.
@@ -30,15 +31,15 @@ in order to avoid irrelevant and costly update operations.)
 (|=) :: SNModel -> Form -> Bool
 (|=) _ Top                                      = True
 (|=) _ Bot                                      = False
-(|=) m (PrpF (Adopted agent position'))         = any ((position' `S.member`) . flip (IntMap.!) agent) (dual m) --TODO with dual this is slower sadly :( bc. we have to search each topic for the position in question, (and bc positions aren't intsets, but we assume more agents and searching the map also takes log n). wonder if the easier update makes up for it...but I do think so
-(|=) m (PrpF (Connected topic agent1 agent2))   = agent2 `IntSet.member`((rel m ! topic) IntMap.! agent1)
+(|=) m (Adopted agent position')                = any ((position' `S.member`) . flip (IntMap.!) agent) (dual m) --TODO with dual this is slower sadly :( bc. we have to search each topic for the position in question, (and bc positions aren't intsets, but we assume more agents and searching the map also takes log n). wonder if the easier update makes up for it...but I do think so
+(|=) m (Connected topic agent1 agent2)          = agent2 `IntSet.member`((rel m ! topic) IntMap.! agent1)
 (|=) m (Neg f)                                  = not $ m |= f
 (|=) m (Conj fs)                                = all (m |=) fs --returns true on empty list
 (|=) m (Disj fs)                                = any (m |=) fs --returns false on an empty list
 (|=) m (Impl f g)                               = not (m |= f) || m |= g
 
-(|=) m (Update (Infl tau) f)                    = (|=) (updInflPreComp tau m) f
-(|=) m (Update (Selec tau) f)                   = (|=) (updSelecMatrix tau m) f
+(|=) m (Infl tau f)                             = (|=) (updInflPreComp tau m) f
+(|=) m (Selec tau f)                            = (|=) (updSelecMatrix tau m) f
 
 
 {-
@@ -50,19 +51,27 @@ Properties:
  - in general it does not depend on the current positions (eg. it's not accumulative)
 -}
 
+
 --Assumes we have agents 1...n
---also here: can we just store it in a matrix? bc I have to go though everything anyway and that way also access would be O(1)
 updInflPreComp :: Double -> SNModel ->SNModel
 updInflPreComp tau m@(SNM _ positions' rel' dual') = m { dual = M.mapWithKey update_per_topic dual' } where
-    update_per_topic t dual_t = IntMap.mapWithKey getNewPos dual_t where
-        this_Ts_N_size_vector = precomputeIntSetSize (rel' ! t)
-        getNewPos ag _ | nr_friends == 0                 = dual_t IntMap.! ag --if no friends, positions stay the same
-                       | tau == 0                        = positions' ! t--TODO change if i delete the positions map from the SNModel representation
-                       | otherwise                       = S.fromList . map fst . filter friendsThink $ countOccur (concatMap (S.toList . (dual_t IntMap.!)) (IntSet.toList friends)) where --IDEA could I maybe make a note that I have this already and reuse it? even parts, where friends are subsets...
+    update_per_topic t dual_t = IntMap.mapWithKey getNewPos dual_t where --TODO only works for full maps
+        friendsGroupMap | tau==0    = M.empty --if tau is zero, we don't have to compute anything
+                        | otherwise = buildFriendsGroupMap $ L.nub $ IntMap.elems (rel' ! t)
+        --buildFriendsGroupMap :: [IntSet] -> M.Map Set [(Position, Int)]
+        --it takes a duplicate-free list of Sets of Agents (friendgroups) and combines and counts the positions they hold
+        --this allows to avoid computing the count several times on cases of identical friendgroups
+        --makes it slower (additional lookup) if we have all different friend groups. but that isn't very likely and I think we save some time when there are many people with the same friend group
+        --TODO if stuff was ordered, we could consider searching for subsets in the map... not sure how much sense that would make though
+        buildFriendsGroupMap [] = M.empty
+        buildFriendsGroupMap (x:xs) = M.insert x (countOccur  (concatMap (S.toList . (dual_t IntMap.!)) (IntSet.toList x))) restMap  where
+                                        restMap = buildFriendsGroupMap xs
+        getNewPos ag _ | nr_friends == 0                 = dual_t IntMap.! ag --if ag has no friends, positions stay the same
+                       | tau == 0                        = positions' ! t
+                       | otherwise                       = S.fromList . map fst . filter friendsThink $ friendsGroupMap ! friends  where --should always be present, otherwise it's a mistake
                             friends = (rel' ! t) IntMap.! ag
+                            nr_friends = IntSet.size $ friends
                             friendsThink (_, occur) = fromIntegral occur / fromIntegral nr_friends >= tau
-                            nr_friends = this_Ts_N_size_vector V.! (ag-1)
-
 
 
 --takes a list and return a list of tuples indicating the number of times an element occured in the input
@@ -71,17 +80,11 @@ countOccur xs = [(head g, length g) | g <- L.group (L.sort xs)] --return empty l
 
 
 {-
-Precompute (??TODO does that really happen) the sizes of the sets in a map. Stores in a vector for O(1) access
+Precompute  the sizes of the sets in a map. Stores in a vector for O(1) access
 --takes dual_t for updSelec and gives the nr of pos held per agent
---takes rel_t for updInfl and gives the nr of friends per agent
 -}
 precomputeSetSize :: IntMap (Set b) -> Vector Int
 precomputeSetSize = V.fromList . map S.size . IntMap.elems
-
-precomputeIntSetSize :: IntMap IntSet -> Vector Int
-precomputeIntSetSize = V.fromList . map IntSet.size . IntMap.elems
-
-
 
 {-
 
@@ -96,24 +99,20 @@ Properties:
 -}
 
 
---TODO working on this, want a matrix that relates agents based on current val
-    --would it be nice to always have such an indexable matrix for the relations?  If I have to create it anyway each time I use a Selec?
-
 --assume agents are contiguous from 1...n
---WAIT do I even need the slicing access? can't I just have a list of lists and then map over it to construct the sets?
---Whats better: constructing them only partially and later making it symmetric. Or mirroring this matrix?
 
 buildRelMatrix :: IntMap (Set Position) -> Int -> Double -> Matrix Bool
 buildRelMatrix dual_t p tau = makeSymMat $ Mat.matrix nrAgs nrAgs pred_sim_T where
     nrAgs = IntMap.size dual_t
+    posSizesVector = precomputeSetSize dual_t
     pred_sim_T (i, j)  | i<=j      = True
                        | otherwise = fromIntegral (p - (nr_i_pos + nr_j_pos) + 2 * nr_intersect) / fromIntegral p >= tau where
                                         nr_intersect = S.size $ S.intersection i_pos j_pos
-                                        i_pos = dual_t IntMap.! i --TODO avoid accessing this too many times? But I think avoiding the upper triangle is already all I can do
+                                        i_pos = dual_t IntMap.! i
                                         j_pos = dual_t IntMap.! j
                                         nr_i_pos = posSizesVector V.! (i-1)
                                         nr_j_pos = posSizesVector V.! (j-1)
-                                        posSizesVector = precomputeSetSize dual_t
+
 
 makeSymMat :: Matrix a -> Matrix a
 makeSymMat m = Mat.mapPos sym m where
@@ -137,39 +136,25 @@ updSelecMatrix tau m@(SNM _ positions' oldrel dual') = m {rel = M.mapWithKey upd
 
 
 
---TODO ?  keep working on this
+--TODO ?  keep working on this; construction of vector
 --maybe I can make it from a list ? where I prepend stuff, so I only go through the sizes less? Or shoudl I precompute the sizes as well?
-{-
-newtype SymMatrix a = SM {v :: V.Vector } --a symmetric matrix, stored as a vector of the lower triangle
+--ACHTUNG vector is 1 based!!
+newtype SymMatrix = SM {v :: V.Vector Bool } --a symmetric matrix, stored as a vector of the lower triangle. (without diagonal, bc. it always holds True)
     deriving (Eq, Ord, Show)
 
-symMatsize :: SymMatrix a -> Int
-symMatsize (SM v) = --TODO
 
-row :: Int -> V.Vector oder so
+--one based access to symmetric matrix with True on the diagonal
+access :: SymMatrix -> (Int,Int) -> Bool
+access (SM v') (i,j) | i==j      = True
+                     | i < j     = access (SM v') (j,i)
+                     | otherwise = v' V.! (sumUp (i-2) + j) where
+                        sumUp n = (n*(n+1)) `div` 2
 
--}
 
---IDEA: what about a map from tuples of position combos to the size_sim_T? so that won't have to be computed everytime?
+--have something to traverse a row
 
 
---takes a SNModel and makes full relations for all topics
-makeFullRelModel :: SNModel -> SNModel
-makeFullRelModel m@(SNM nrAgents' _ rel' _) = m { rel = M.map fullRel rel' } where
-    fullRel = IntMap.map allFriends
-    allFriends _ = IntSet.fromList [1..nrAgents']
 
---takes a SNModel and makes all its relations reflexive
-makeReflModel :: SNModel -> SNModel
-makeReflModel m@(SNM _ _ rel' _) = m {rel = M.map makeReflexive rel'}
-
---takes a SNmodel and makes all its relations symmetric
-makeSymModel :: SNModel -> SNModel
-makeSymModel m@(SNM _ _ rel' _) = m {rel = M.map makeSymmetric rel'}
-
---takes a SNModel and makes all its relations transitive
-makeTransModel :: SNModel -> SNModel
-makeTransModel m@(SNM _ _ rel' _) = m {rel = M.map makeTransitive rel'}
 
 
 {-

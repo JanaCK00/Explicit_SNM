@@ -14,6 +14,7 @@ import qualified Data.Set as S -- Set is strict ;)
 import Data.Set (Set)
 import qualified Data.IntSet as IntSet
 import SetTheory
+import Data.Bits (testBit)
 
 {-
 Explicit representation of Social Network Models following Smets et al. (2020)
@@ -38,11 +39,14 @@ Assumptions on the form of SNM: (that aren't enforced here, but should be checke
 (3) All Maps are full (every Topic or Positions respectively is a key (even if it just maps to the empty set))
 -}
 
+--TODO change that the maps aren't full???? so you save space when many people e.g. don't have friends, you also get faster lookips for sparse case
+--and: for the dual, you could also save the agents that don't have a positions on that topic...
+--PROBLEM: in my semantics, I'd have to go about it quite differently (safe lookups, can't just mapwithkey over the old map, bc some agents might be inserted or deleted from a map)
 data SNModel = SNM
  { nrAgents :: Int --agents are referred to by 1..nrAgents
  , positions :: M.Map Topic (Set Position) --pairwise disjoint sets. this could actually also be a map of sizes and then have the topic in the position like i planned originally...and you only need the list of positions for a topic to go through for the annpying case of Infl 0...BUT: for UpdInfl it's cleaner to have stuff seperated by topics, we couldn't merge the dual maps. And then you hae to carry the info around, for each operation
  , rel :: M.Map Topic Relation --the social networks, every topic should be a key
- , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, every agent in each submap should be a key
+ , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, every agent in each submap should be a key TODO maybe not every agent should be a key...it's not too unlikely that they don't take any position on a certain topic
  } deriving (Eq, Show)
 
 
@@ -56,7 +60,7 @@ newtype Position = P Int deriving (Eq, Show, Ord)
 defaultNrAgs, nrTpcs, nrPosTotal :: Int
 defaultNrAgs = 100
 nrTpcs = 10
-nrPosTotal = 50 --number of positions in total, make sure nrPosTotal >= (2*)nrTpcs
+nrPosTotal = 100 --number of positions in total, make sure nrPosTotal >= (2*)nrTpcs
 
 
 
@@ -146,6 +150,35 @@ exampleCircleFriendship = SNM 4 positions' rel' val' where
 -}
 
 
+--example to test stabilization
+
+exampleStab :: Int -> SNModel
+exampleStab n = SNM stabAgSize positions' rel' dual'  where
+  stabPosSize = n
+  stabAgSize = 2^n
+  positions' = M.singleton (T 1) (S.fromList $ map P [1..stabPosSize])
+  rel'       = M.singleton (T 1) $ makeEmptyRel stabAgSize
+  dual'      = M.singleton (T 1) (foldl (\cur i -> IntMap.insert i (constructBitSet i) cur) IntMap.empty [1..stabAgSize]) where
+    constructBitSet i = S.fromList $ map (P . (+1)) $ filter (testBit i) [0..(stabPosSize-1)]
+
+
+-- ACHTUNG ! .. !
+fixCount :: Eq a => (a -> a) -> a -> (a, Int)
+fixCount f = go 0
+  where
+    go k x =
+      let x' = f x
+      in if x' == x
+           then (x, k)
+           else go (k + 1) x'
+
+examplePaper :: SNModel
+examplePaper = SNM 4 positions' rel' dual' where
+  positions' = M.singleton (T 1) (S.fromList $ map P [1..4])
+  rel' = M.singleton (T 1) $ makeEmptyRel 4
+  dual' = M.singleton (T 1) (IntMap.fromList [(1, S.singleton (P 1)), (2,S.fromList [P 2, P 3]), (3, S.singleton (P 4)), (4, S.fromList [P 1, P 2, P 3])])
+
+
 
 {-
 these work with the provided lists of agents/topics/positions, not only with the default :)
@@ -160,7 +193,7 @@ generates an arbitrary binary relation.
 randomRel :: [Agent] -> [Agent] -> Gen Relation
 randomRel _ [] = return IntMap.empty
 randomRel allAgs (ag:ags) = do
-    thisAgsFriends <- IntSet.fromList <$> sublistOf allAgs
+    thisAgsFriends <- IntSet.fromList <$> sublistOf allAgs --TODO if this is empty -> don't add to map?
     rest <- randomRel allAgs ags
     return $ IntMap.insert ag thisAgsFriends rest
 
@@ -197,7 +230,7 @@ Given a list of positions of a certain topic and a list of agents (both duplicat
 randomDualT :: Set Position -> [Agent] -> Gen (IntMap (Set Position))
 randomDualT _ [] = return IntMap.empty
 randomDualT pos (ag:ags) = do
-    thisAgsPos <- subsetOf pos
+    thisAgsPos <- subsetOf pos --TODO if this is empty -> don't add to map?
     rest <- randomDualT pos ags
     return $ IntMap.insert ag thisAgsPos rest
 
@@ -239,13 +272,43 @@ randomPosMap ts ps = do
 instance Arbitrary SNModel where
   arbitrary = do
     --TODO limit some stuff? (not necessary, bc I don't close under reflexivity/transitivity?)
-    let ags = [1..defaultNrAgs]
-        tpcs = map T [1..nrTpcs]
-        pos = map P [1..nrPosTotal]
+    let ags = [1..defaultNrAgs] --TODO could change this to have different number of agents, be the nr between 1 and defaultNrAgs
+        tpcs = map T [1..nrTpcs] --here too
+        pos = map P [1..nrPosTotal] --and then this could be between number of tpcs and like 10-20 times that
     randomTPMap <- randomPosMap tpcs pos
     randomRels <- randomRelMap ags tpcs
     randomDual <- randomDualMap randomTPMap ags
     return (SNM defaultNrAgs randomTPMap randomRels randomDual)
+
+
+
+
+--takes a SNModel and makes full relations for all topics
+makeFullRelModel :: SNModel -> SNModel
+makeFullRelModel m@(SNM nrAgents' _ rel' _) = m { rel = M.map fullRel rel' } where
+    fullRel = IntMap.map allFriends
+    allFriends _ = IntSet.fromList [1..nrAgents']
+
+
+--TODO check if this works
+--takes a number of agents and creates an empty Relation (each agent is a key in the map)
+makeEmptyRel :: Int -> Relation
+makeEmptyRel n = foldl (\cur i -> IntMap.insert i IntSet.empty cur) IntMap.empty [1..n]
+
+
+--takes a SNModel and makes all its relations reflexive
+makeReflModel :: SNModel -> SNModel
+makeReflModel m@(SNM _ _ rel' _) = m {rel = M.map makeReflexive rel'}
+
+--takes a SNmodel and makes all its relations symmetric
+makeSymModel :: SNModel -> SNModel
+makeSymModel m@(SNM _ _ rel' _) = m {rel = M.map makeSymmetric rel'}
+
+--takes a SNModel and makes all its relations transitive
+makeTransModel :: SNModel -> SNModel
+makeTransModel m@(SNM _ _ rel' _) = m {rel = M.map makeTransitive rel'}
+
+
 
 {-
 usage in ghci:
