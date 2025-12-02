@@ -9,12 +9,12 @@ import qualified Data.Set as S
 --import Data.List as L
 import Semantics
 import Test.QuickCheck
-  ( Arbitrary (..), Property, classify, property)
+  ( Arbitrary (..), Property, classify, property, collect)
 import Test.QuickCheck.Gen (genDouble)
 import qualified Data.IntMap.Strict as IntMap
 
 propo1 :: Form
-propo1 = PrpF (Adopted 1 (P 1))
+propo1 = Adopted 1 (P 1)
 
 
 --define some simple tautology
@@ -39,8 +39,9 @@ check if a given SNModel maps every positions to a set of agents who have adopte
 --fullVal (SNM _ positions' _ val') = M.size val' == S.size (allPos positions')
 
 --check if the set of agents in non-empty
---nonEmptyAgs :: SNModel -> Bool
---nonEmptyAgs = not . IntSet.null . agents
+nonEmptyAgs :: SNModel -> Bool
+nonEmptyAgs (SNM 0 _ _ _ ) = False
+nonEmptyAgs _              = True
 
 --check if the dual maps all topics to a map where all agents are mapped
 fullDual :: SNModel -> Bool
@@ -77,12 +78,12 @@ noDuplicates (SNM agents' positions' rel' val') = noDups agents' && all noDups p
 --TODO extend if I write more
 --check all properties at once
 isValidSNModel :: SNModel -> Bool
-isValidSNModel snm = all (\f -> f snm) [fullRel,
+isValidSNModel snm = all (\f -> f snm) [fullRel, nonEmptyAgs,
                                          nonEmptyPos,
                                         nonEmptyTpcs, disjointPositionSets]
 
 
---TODO is this the easiest way to have it use random taus???
+--TODO is this the easiest way to have it use random taus??? (between 0 and 1), no can just genereate Double and take
 newtype SpecialDouble = SpD Double deriving (Eq, Show)
 instance Arbitrary SpecialDouble where
     arbitrary = SpD <$> genDouble
@@ -132,12 +133,19 @@ prop_trivialForm f =
   classify (isTrivial f) "simplifies to Top/Bot" $
     property True
 
+prop_numberOfTurns :: Double -> SNModel -> Property
+prop_numberOfTurns tau m =
+    let steps = snd $ fixCount ((updInflPreComp tau'). (updSelecMatrix tau')) m
+        tau' = snd $ properFraction tau in
+        collect steps $
+        property True
 
 --check if a formula contains empty lists after Conj or Disj
 containsEmpty :: Form -> Bool
 containsEmpty (Conj xs) = null xs || any containsEmpty xs
 containsEmpty (Disj xs) = null xs || any containsEmpty xs
-containsEmpty (Update _ f) = containsEmpty f
+containsEmpty (Infl _ f) = containsEmpty f
+containsEmpty (Selec _ f) = containsEmpty f
 containsEmpty (Impl f g) = containsEmpty f || containsEmpty g
 containsEmpty (Neg f) = containsEmpty f
 containsEmpty _ = False
@@ -145,18 +153,11 @@ containsEmpty _ = False
 --check if a simplified Form contains NO occurance of Top/Bot
 topBotFree :: Form -> Bool
 topBotFree = allSubf freePred where
-    freePred (Update _ f) = allSubf freePred f --THIS IS THE PROBLEM Probably
-    freePred (PrpF _) = True
+    freePred (Infl _ f)     = allSubf freePred f
+    freePred (Selec _ f)    = allSubf freePred f
+    freePred (Adopted _ _ ) = True
+    freePred (Connected {}) = True
     freePred _ = False --Includes Top, Bot (plus for the sake of pattern exhaustion, all complex cases, but those should be handled by allSubf)
-
-{-
-allSubf :: (Form -> Bool) -> Form -> Bool
-allSubf predi (Neg f)      = allSubf predi f
-allSubf predi (Conj xs)    = all (allSubf predi) xs
-allSubf predi (Disj xs)    = all (allSubf predi) xs
-allSubf predi (Impl f1 f2) = allSubf predi f1 && allSubf predi f2
-allSubf predi f            = predi f -- includes Top, Bot, PrpF, Update
--}
 
 --check if a simplified Form either simplifies to be trivial, or simplifies so it doesn't contain any occurances of Top/Bot
 topBotpurity :: Form -> Bool

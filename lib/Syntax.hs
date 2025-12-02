@@ -22,21 +22,6 @@ import Data.Containers.ListUtils (nubOrd)
 -}
 
 
-{-
-Adopted agent position means "The agent has adopted the position"
-Connected topic agent1 agent2 means "agent1 considers agent2 their friend on the topic."
--}
-data Prp = Adopted Agent Position | Connected Topic Agent Agent deriving (Eq,Ord,Show)
-
-{-
-modal operators for updates with thresholds
-Infl is social influence: Agents change what positions they hold based on their topic-specific
-social network. (proportion of friends who hold a position should be larger or equal to tau)
-Selec is friendship selection: Agents choose their social connections in each topic-specific social network
-based on the proportion of positions they agree on (>= tau)
--}
-data UpOperator = Infl Double | Selec Double deriving (Eq, Ord, Show)
-
 
 {-
 Syntax of Social Network Logic (propositional language with
@@ -47,12 +32,14 @@ and Selec (Friendship Selection)
 data Form
   = Top
   | Bot
-  | PrpF Prp --Adopted and Connected, TODO have these explicitely?
+  | Adopted Agent Position -- atom meaning "The agent has adopted the position."
+  | Connected Topic Agent Agent -- atom meaning "Agent1 considers Agent2 their friend on the topic."
   | Neg Form
   | Conj [Form]
   | Disj [Form]
   | Impl Form Form -- faster as primitive (quote Gattinger)
-  | Update UpOperator Form --Infl and Selec
+  | Infl Double Form -- Social influence: Agents change positions based on their topic-specific network, acc to threshold.
+  | Selec Double Form -- Friendship selection: Agents choose social connections per topic based on the proportion of positions they agree on, acc to threshold.
   deriving (Eq, Show, Ord)
 
 
@@ -73,12 +60,12 @@ xor f g = Disj [Conj [f, Neg g], Conj [Neg f, g]]
 
 
 {-
-Translate sequence of updates to formula.
+Translate sequence of updates (Infl tau or Selec tau (of type Form -> Form)) to formula.
 No restriction on which type and what tau is used
 Example: updateSeq [up1, up2, up3] f = Update up1 (Update up2 (Update up3 f))
 -}
-updateSeq :: [UpOperator] -> Form -> Form
-updateSeq = flip $ foldr Update
+updateSeq :: [Form -> Form] -> Form -> Form
+updateSeq = flip (foldr ($))
 
 {-
 Simplify a formula to an equivalent formula.
@@ -90,11 +77,13 @@ simplify = lfp simStep    --lfp keeps applying simStep until the result is const
 simStep :: Form -> Form
 simStep Top             = Top
 simStep Bot             = Bot
-simStep (PrpF p)        = PrpF p
+simStep (Connected t a1 a2) = Connected t a1 a2
+simStep (Adopted ag p)   = Adopted ag p
 simStep (Neg Top)       = Bot
 simStep (Neg Bot)       = Top
 simStep (Neg (Neg f))   = simStep f
-simStep (Neg (Update up f)) = simStep (Update up (Neg f)) --bubble up update operator
+simStep (Neg (Infl tau f)) = simStep (Infl tau (Neg f)) --bubble up update operator
+simStep (Neg (Selec tau f)) = simStep (Selec tau (Neg f)) --bubble up update operator
 simStep (Neg f)         = Neg $ simStep f
 simStep (Conj [])       = Top
 simStep (Conj [f])      = simStep f
@@ -117,12 +106,16 @@ simStep (Impl _ Top)    = Top
 simStep (Impl Top f)    = simStep f
 simStep (Impl f Bot)    = Neg (simStep f)
 --bubble up update operator if it's the same on both sides of implication
-simStep (Impl f@(Update up1 subF) g@(Update up2 subG)) | up1==up2  = Update up1 (simStep (Impl subF subG))
-                                                       | otherwise = Impl (simStep f) (simStep g)
+simStep (Impl f@(Infl tau1 subF) g@(Infl tau2 subG)) | tau1==tau2  = Infl tau1 (simStep (Impl subF subG))
+                                                     | otherwise   = Impl (simStep f) (simStep g)
+simStep (Impl f@(Selec tau1 subF) g@(Selec tau2 subG)) | tau1==tau2  = Selec tau1 (simStep (Impl subF subG))
+                                                       | otherwise   = Impl (simStep f) (simStep g)
 simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
-simStep (Update _ Bot)  = Bot
-simStep (Update _ Top)  = Top
+simStep (Infl _ Bot)  = Bot
+simStep (Infl _ Top)  = Top
+simStep (Selec _ Bot)  = Bot
+simStep (Selec _ Top)  = Top
 
 {-
 (1) Update Selec does not impact positions.
@@ -132,9 +125,9 @@ simStep (Update _ Top)  = Top
 -> Therefore, if we apply Selec to a formula that has all subformulas either Selec or PrpF Adopted, we can drop the left-most selec.
 (3) After Selec 1, influence won't change anything, ACHTUNG TODO only correct in basic version!!
 -}
-simStep (Update s@(Selec tau) f) | madeOfAdopSelec f   = simStep f
-                                 | tau==1              = Update s (simStep (removeLeadingInfl f))
-                                 | otherwise           = Update s (simStep f)
+simStep (Selec tau f) | madeOfAdopSelec f   = simStep f
+                      | tau==1              = Selec tau (simStep (removeLeadingInfl f))
+                      | otherwise           = Selec tau (simStep f)
 
 
 {-
@@ -142,8 +135,8 @@ Update Infl does not impact connections.
 Therefore, if we only check a boolean combination of Connected propositions,
   we can skip computing the update.
 -}
-simStep (Update i@(Infl _) f)  | boolOfConnected f = simStep f
-                               | otherwise         = Update i (simStep f)
+simStep (Infl tau f) | boolOfConnected f = simStep f
+                     | otherwise         = Infl tau (simStep f)
 
 
 {-
@@ -173,8 +166,9 @@ mapSubf g f            = g f --Inludes Top, Bot, PrpF, Update
 --Checks if a given formula is a boolean combination of Connected Propositions. (or Top/Bot)
 boolOfConnected :: Form -> Bool
 boolOfConnected = allSubf connectedPred where
-  connectedPred (PrpF (Adopted _ _))  = False
-  connectedPred (Update _ _)          = False
+  connectedPred (Adopted _ _)         = False
+  connectedPred (Infl _ _)            = False
+  connectedPred (Selec _ _)           = False
   connectedPred _                     = True --includes Top, Bot, PrpF Connected (plus for the sake of pattern exhaustion all the complex constructors)
 
 
@@ -184,8 +178,8 @@ Checks if a formula has all it's subformulas starting with a Selec, or is Top an
 -}
 madeOfAdopSelec :: Form -> Bool
 madeOfAdopSelec = allSubf selecAdopPred where
-  selecAdopPred (Update (Infl _) _)   = False
-  selecAdopPred (PrpF (Connected {})) = False
+  selecAdopPred (Infl _ _)            = False
+  selecAdopPred (Connected {})        = False
   selecAdopPred _                     = True --includes Top, Bot, Update Selec, PrpF Adopted (plus for the sake of pattern exhaustion all the complex constructors)
 
 
@@ -201,9 +195,10 @@ groupByOperator (Disj xs) = Disj (concatMap (bubbleUpOp Disj) (L.groupBy hasSame
 groupByOperator f         = f --only here for pattern exhaustion
 
 
---Return the leading update operator, if present.
-operator :: Form -> Maybe UpOperator
-operator (Update up1 _) = Just up1
+--Return the leading update operator (for the sake of comparability, completed to a Form), if present.
+operator :: Form -> Maybe Form
+operator (Infl tau _)   = Just (Infl tau Top)
+operator (Selec tau _)  = Just (Selec tau Top)
 operator _              = Nothing
 
 {-
@@ -220,8 +215,9 @@ The second argument a list of Forms that start with the same update operator.
 It will bubble up that shared Update operator.
 -}
 bubbleUpOp :: ([Form] -> Form) -> [Form] -> [Form]
-bubbleUpOp _ [x]           = [x] --do nothing, if is a singleton list
-bubbleUpOp constr ((Update up1 x):xs) = [Update up1 (removeFirstOp (constr (x:xs)))]
+bubbleUpOp _ [x]                      = [x] --do nothing, if is a singleton list
+bubbleUpOp constr ((Infl tau x):xs)   = [Infl tau (removeFirstOp (constr (x:xs)))]
+bubbleUpOp constr ((Selec tau x):xs)  = [Selec tau (removeFirstOp (constr (x:xs)))]
 bubbleUpOp _ xs                       = xs    --list of stuff that doesn't start with an Update Operator (incl the empty list)
 
 
@@ -230,31 +226,20 @@ Removes the first update operator of all subformulas in Conj/Disj.
 Intended only to be used for Forms that are lists of forms that start with update operator
 -}
 removeFirstOp :: Form -> Form
-removeFirstOp (Update _ f) = f
+removeFirstOp (Infl _ f)   = f
+removeFirstOp (Selec _ f)  = f
 removeFirstOp (Conj xs)    = Conj (map removeFirstOp xs)
 removeFirstOp (Disj xs)    = Disj (map removeFirstOp xs)
 removeFirstOp g            = g --includes Top/Bot. Otherwise only here for pattern exhaustion.
 
 --Removes all Infl Updates until a Selec is reached.
 removeLeadingInfl :: Form -> Form
-removeLeadingInfl (Update (Infl _) f) = removeLeadingInfl f
-removeLeadingInfl (Impl f1 f2)        = Impl (removeLeadingInfl f1) (removeLeadingInfl f2)
-removeLeadingInfl (Conj xs)           = Conj $ map removeLeadingInfl xs
-removeLeadingInfl (Disj xs)           = Disj $ map removeLeadingInfl xs
-removeLeadingInfl (Neg f)             = Neg $ removeLeadingInfl f
-removeLeadingInfl f                   = f -- includes Top, Bot, PrpF, and most importantly Update Selec
-
-
-{-
-Generate an Arbitrary Proposition.
--}
-instance Arbitrary Prp where
-  arbitrary = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
-                    , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
-                    ]
-    where arbitraryAg = chooseInt (1, defaultNrAgs)
-          arbitraryPos = P <$> chooseInt (1, nrPosTotal)
-          arbitraryTpc = T <$> chooseInt (1, nrTpcs)
+removeLeadingInfl (Infl _ f)    = removeLeadingInfl f
+removeLeadingInfl (Impl f1 f2)  = Impl (removeLeadingInfl f1) (removeLeadingInfl f2)
+removeLeadingInfl (Conj xs)     = Conj $ map removeLeadingInfl xs
+removeLeadingInfl (Disj xs)     = Disj $ map removeLeadingInfl xs
+removeLeadingInfl (Neg f)       = Neg $ removeLeadingInfl f
+removeLeadingInfl f             = f -- includes Top, Bot, PrpF, and most importantly Update Selec
 
 
 {-
@@ -268,15 +253,23 @@ instance Arbitrary Prp where
 instance Arbitrary Form where
     arbitrary = sized randomForm
       where
+
+        arbitraryAg = chooseInt (1, defaultNrAgs)
+        arbitraryPos = P <$> chooseInt (1, nrPosTotal)
+        arbitraryTpc = T <$> chooseInt (1, nrTpcs)
+
         randomForm :: Int -> Gen Form
-        randomForm 0 = PrpF <$> (arbitrary::Gen Prp)
-        randomForm n = oneof [ PrpF <$> (arbitrary::Gen Prp)
+        randomForm 0 = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
+                             , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
+                             ]
+        randomForm n = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
+                             , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
                              , Neg <$> st
                              , Conj <$> listOf st `suchThat` (not . null)
                              , Disj <$> listOf st `suchThat` (not . null)
                              , Impl <$> st <*> st
-                             , Update . Infl <$> genDouble <*> st
-                             , Update . Selec <$> genDouble <*> st
+                             , Infl <$> genDouble <*> st
+                             , Selec <$> genDouble <*> st
                              ]
           where
             st = randomForm (n `div` 3)

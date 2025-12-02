@@ -35,7 +35,7 @@ import qualified Data.IntMap.Strict as IntMap
 
 type Agent = Int
 type AgentSet = IntSet
-type Relation = IntMap AgentSet --every agent should be a key
+type Relation = IntMap AgentSet --every agent should be a key, TODO maybe not every agent should be a key...but how likely is it, that they don't have any friends? not very i guess...
 
 
 --Given a Relation, make it reflexive.
@@ -49,7 +49,7 @@ makeSymmetric rel = makeSym (IntMap.toList rel) rel where
   makeSym [] acc = acc
   makeSym ((ag, friends):rest) acc = makeSym rest (IntMap.mapWithKey addMe acc) where
     addMe a f | a `IntSet.member` friends = IntSet.insert ag f
-              | otherwise = f
+              | otherwise                 = f
 
 {-
   Recursively make a given relation transitive. For each agent, given their current

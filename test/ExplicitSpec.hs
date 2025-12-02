@@ -54,6 +54,8 @@ spec = do
         prop "Arbitrary SNModel is a social networks model" $ do
             \snm -> isValidSNModel (snm::SNModel)
 
+
+--TODO change this, don't need special double -> can write property in testhelpers
     describe "Testing propoerties of update operations" $ do
         prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
             \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::SpecialDouble) (i2::SpecialDouble)
@@ -76,6 +78,8 @@ spec = do
             \f -> not $ containsEmpty (f::Form)
         prop "Dummy to see what percentage of generated Forms evaluates to Top or Bot" $ do
             prop_trivialForm
+        prop "Dummy to see how many steps until stable" $ do
+            prop_numberOfTurns
         prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
             \f -> topBotpurity (f::Form)
 
