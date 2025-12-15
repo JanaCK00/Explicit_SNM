@@ -10,7 +10,7 @@ import Test.QuickCheck
   , listOf
   , suchThat
   )
-import qualified Data.List as L (groupBy, sortOn)
+import qualified Data.List as L (groupBy, sortOn, nub)
 import SMCDEL.Internal.Help (lfp)
 import SNModel
 import SetTheory
@@ -18,7 +18,7 @@ import Test.QuickCheck.Gen (genDouble, chooseInt)
 import Data.Containers.ListUtils (nubOrd)
 
 {-
-  Language, simplification of formulas, arbitrary generation of formulas
+  Language, simplification of formulas, arbitrary generation of formulas.
 -}
 
 
@@ -29,6 +29,12 @@ the special atoms Adopted and Connected, and the dynamic operators Infl (Social 
 and Selec (Friendship Selection)
 -}
 
+
+--used to define mode of updates
+data Mode = Basic | Variant deriving (Eq, Show, Ord)
+
+
+--in the following I assume a Form is mode-consistent (= all Infl/Selec are of same mode)
 data Form
   = Top
   | Bot
@@ -38,10 +44,24 @@ data Form
   | Conj [Form]
   | Disj [Form]
   | Impl Form Form -- faster as primitive (quote Gattinger)
-  | Infl Double Form -- Social influence: Agents change positions based on their topic-specific network, acc to threshold.
-  | Selec Double Form -- Friendship selection: Agents choose social connections per topic based on the proportion of positions they agree on, acc to threshold.
+  | Infl Mode Double Form -- Social influence: Agents change positions based on their topic-specific network, acc to threshold.
+  | Selec Mode Double Form -- Friendship selection: Agents choose social connections per topic based on the proportion of positions they agree on, acc to threshold.
   deriving (Eq, Show, Ord)
 
+
+--return True if a Form doesn't contain both Modes, False otherwise
+checkModeConsistent :: Form -> Bool
+checkModeConsistent f = length (L.nub $ getMode f) < 2
+
+--returns a list of all found modes, returns [] if a form doesn't contain any updates and is therefore mode un-specific
+getMode :: Form -> [Mode]
+getMode (Infl mode _ _) = [mode]
+getMode (Selec mode _ _) = [mode]
+getMode (Neg f) = getMode f
+getMode (Conj xs) = concatMap getMode xs
+getMode (Disj xs) = concatMap getMode xs
+getMode (Impl f g) = getMode f ++ getMode g
+getMode _ = [] --includes Top, Bot, Adopted, Connected
 
 
 --Abbreviations
@@ -59,10 +79,11 @@ xor :: Form -> Form -> Form
 xor f g = Disj [Conj [f, Neg g], Conj [Neg f, g]]
 
 
+
 {-
-Translate sequence of updates (Infl tau or Selec tau (of type Form -> Form)) to formula.
-No restriction on which type and what tau is used
-Example: updateSeq [up1, up2, up3] f = Update up1 (Update up2 (Update up3 f))
+Translate sequence of updates (Infl mode tau or Selec mode tau (of type Form -> Form)) to formula.
+Different tau are allowed, mode-consistency is assumed (but not enforced)
+Example: updateSeq [up1, up2, up3] f =  up1 ( up2 ( up3 f))
 -}
 updateSeq :: [Form -> Form] -> Form -> Form
 updateSeq = flip (foldr ($))
@@ -70,6 +91,9 @@ updateSeq = flip (foldr ($))
 {-
 Simplify a formula to an equivalent formula.
 Adapted from Symbolic-Topo-E-Models.Syntax.
+
+! ASSUMES: mode-consistent Form
+TODO if I want only in-update mode-consistence, I have to change in one case (Selec 1)
 -}
 simplify :: Form -> Form
 simplify = lfp simStep    --lfp keeps applying simStep until the result is constant.
@@ -82,8 +106,8 @@ simStep (Adopted ag p)   = Adopted ag p
 simStep (Neg Top)       = Bot
 simStep (Neg Bot)       = Top
 simStep (Neg (Neg f))   = simStep f
-simStep (Neg (Infl tau f)) = simStep (Infl tau (Neg f)) --bubble up update operator
-simStep (Neg (Selec tau f)) = simStep (Selec tau (Neg f)) --bubble up update operator
+simStep (Neg (Infl mode tau f)) = simStep (Infl mode tau (Neg f)) --bubble up update operator
+simStep (Neg (Selec mode tau f )) = simStep (Selec mode tau (Neg f)) --bubble up update operator
 simStep (Neg f)         = Neg $ simStep f
 simStep (Conj [])       = Top
 simStep (Conj [f])      = simStep f
@@ -106,28 +130,35 @@ simStep (Impl _ Top)    = Top
 simStep (Impl Top f)    = simStep f
 simStep (Impl f Bot)    = Neg (simStep f)
 --bubble up update operator if it's the same on both sides of implication
-simStep (Impl f@(Infl tau1 subF) g@(Infl tau2 subG)) | tau1==tau2  = Infl tau1 (simStep (Impl subF subG))
-                                                     | otherwise   = Impl (simStep f) (simStep g)
-simStep (Impl f@(Selec tau1 subF) g@(Selec tau2 subG)) | tau1==tau2  = Selec tau1 (simStep (Impl subF subG))
-                                                       | otherwise   = Impl (simStep f) (simStep g)
+simStep (Impl f@(Infl mode1 tau1 subF) g@(Infl _ tau2 subG)) | tau1==tau2  = Infl mode1 tau1 (simStep (Impl subF subG)) --assume mode-consistent
+                                                             | otherwise   = Impl (simStep f) (simStep g)
+simStep (Impl f@(Selec mode1 tau1 subF) g@(Selec _ tau2 subG)) | tau1==tau2  = Selec mode1 tau1 (simStep (Impl subF subG)) --assume mode-consistent
+                                                               | otherwise   = Impl (simStep f) (simStep g)
 simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
-simStep (Infl _ Bot)  = Bot
-simStep (Infl _ Top)  = Top
-simStep (Selec _ Bot)  = Bot
-simStep (Selec _ Top)  = Top
+simStep (Infl _ _ Bot)  = Bot
+simStep (Infl _ _ Top)  = Top
+simStep (Selec _ _ Bot) = Bot
+simStep (Selec _ _ Top) = Top
 
 {-
-(1) Update Selec does not impact positions.
-      Therefore if we only check a boolean combination of Adopted propositions,
-      we can skip computing the update.
-(2) If we have two Selecs in a row (no matter the tau), the first will be irrelevant.
--> Therefore, if we apply Selec to a formula that has all subformulas either Selec or PrpF Adopted, we can drop the left-most selec.
-(3) After Selec 1, influence won't change anything, ACHTUNG TODO only correct in basic version!!
+Basic:
+(1) Update Selec does not impact positions + two Selecs in a row (not matter the tau) leave the first applied irrelevant
+      Therefore if we only check a boolean combination of Adopted propositions and Selecs, (no Infl, no Connected)
+      we can skip computing the outer Selec.
+(2) After Selec 1, influence won't change anything (except Infl 0, which is handled in removeLeadingInfl).
+
+Variant:
+(1) Update Selec does not impact positions + two Selecs in a row with increasing or constant tau leave the first applied irrelevant.
+  Therefore if we only check a boolean combination of Adopted propositions and stricter/equal Selecs (no softer Selecs, no Connected),
+  we can skip computing the update.
+TODO CHECK IF THE PART ABOUT SELECS IS CORRECT
+
 -}
-simStep (Selec tau f) | madeOfAdopSelec f   = simStep f
-                      | tau==1              = Selec tau (simStep (removeLeadingInfl f))
-                      | otherwise           = Selec tau (simStep f)
+simStep (Selec mode tau f) | mode == Basic && madeOfAdopSelec f              = simStep f
+                           | mode == Variant && madeOfAdopStrictSelec tau f  = simStep f
+                           | mode == Basic && tau==1                         = Selec Basic tau (simStep (removeLeadingInfl f)) --TODO assumes mode-consistent across Selec/Infl!
+                           | otherwise                                       = Selec mode tau (simStep f)
 
 
 {-
@@ -135,8 +166,8 @@ Update Infl does not impact connections.
 Therefore, if we only check a boolean combination of Connected propositions,
   we can skip computing the update.
 -}
-simStep (Infl tau f) | boolOfConnected f = simStep f
-                     | otherwise         = Infl tau (simStep f)
+simStep (Infl mode tau f) | boolOfConnected f = simStep f
+                          | otherwise         = Infl mode tau (simStep f)
 
 
 {-
@@ -167,9 +198,19 @@ mapSubf g f            = g f --Inludes Top, Bot, PrpF, Update
 boolOfConnected :: Form -> Bool
 boolOfConnected = allSubf connectedPred where
   connectedPred (Adopted _ _)         = False
-  connectedPred (Infl _ _)            = False
-  connectedPred (Selec _ _)           = False
+  connectedPred (Infl {})             = False
+  connectedPred (Selec {})            = False
   connectedPred _                     = True --includes Top, Bot, PrpF Connected (plus for the sake of pattern exhaustion all the complex constructors)
+
+
+--TODO maybe delete if not used
+--Checks if a given formula is a boolean combination of Connected Propositions. (or Top/Bot)
+boolOfAdopted :: Form -> Bool
+boolOfAdopted = allSubf adoptedPred where
+  adoptedPred (Connected {})        = False
+  adoptedPred (Infl {})             = False
+  adoptedPred (Selec {})            = False
+  adoptedPred _                     = True --includes Top, Bot, PrpF Adopted (plus for the sake of pattern exhaustion all the complex constructors)
 
 
 {-
@@ -178,9 +219,22 @@ Checks if a formula has all it's subformulas starting with a Selec, or is Top an
 -}
 madeOfAdopSelec :: Form -> Bool
 madeOfAdopSelec = allSubf selecAdopPred where
-  selecAdopPred (Infl _ _)            = False
-  selecAdopPred (Connected {})        = False
-  selecAdopPred _                     = True --includes Top, Bot, Update Selec, PrpF Adopted (plus for the sake of pattern exhaustion all the complex constructors)
+  selecAdopPred (Infl {})            = False
+  selecAdopPred (Connected {})       = False
+  selecAdopPred _                    = True --includes Top, Bot, Update Selec, PrpF Adopted (plus for the sake of pattern exhaustion all the complex constructors)
+
+
+{-
+Checks if a formula has all it's subformulas starting with a Selec stricter or equal to provided tau, or is Top and Bot
+  (where the update is also irrelevant), or a PrpF Adopted.
+-}
+madeOfAdopStrictSelec :: Double -> Form -> Bool
+madeOfAdopStrictSelec tau = allSubf (selecStrictAdopPred tau) where
+  selecStrictAdopPred _ (Infl {})            = False
+  selecStrictAdopPred _ (Connected {})       = False
+  selecStrictAdopPred tau1 (Selec _ tau2 _) = tau2 >= tau1
+  selecStrictAdopPred _ _                    = True --includes Top, Bot, PrpF Adopted (plus for the sake of pattern exhaustion all the complex constructors)
+
 
 
 {-
@@ -195,11 +249,11 @@ groupByOperator (Disj xs) = Disj (concatMap (bubbleUpOp Disj) (L.groupBy hasSame
 groupByOperator f         = f --only here for pattern exhaustion
 
 
---Return the leading update operator (for the sake of comparability, completed to a Form), if present.
+--Return the leading update operator (for the sake of comparability (can't compare functions), completed to a Form), if present.
 operator :: Form -> Maybe Form
-operator (Infl tau _)   = Just (Infl tau Top)
-operator (Selec tau _)  = Just (Selec tau Top)
-operator _              = Nothing
+operator (Infl mode tau _)   = Just (Infl mode tau Top)
+operator (Selec mode tau _)  = Just (Selec mode tau Top)
+operator _                   = Nothing
 
 {-
 Return a Bool indicating if two formulas start with the same update operator.
@@ -216,8 +270,8 @@ It will bubble up that shared Update operator.
 -}
 bubbleUpOp :: ([Form] -> Form) -> [Form] -> [Form]
 bubbleUpOp _ [x]                      = [x] --do nothing, if is a singleton list
-bubbleUpOp constr ((Infl tau x):xs)   = [Infl tau (removeFirstOp (constr (x:xs)))]
-bubbleUpOp constr ((Selec tau x):xs)  = [Selec tau (removeFirstOp (constr (x:xs)))]
+bubbleUpOp constr ((Infl mode tau x):xs)   = [Infl mode tau (removeFirstOp (constr (x:xs)))]
+bubbleUpOp constr ((Selec mode tau x):xs)  = [Selec mode tau (removeFirstOp (constr (x:xs)))]
 bubbleUpOp _ xs                       = xs    --list of stuff that doesn't start with an Update Operator (incl the empty list)
 
 
@@ -226,15 +280,17 @@ Removes the first update operator of all subformulas in Conj/Disj.
 Intended only to be used for Forms that are lists of forms that start with update operator
 -}
 removeFirstOp :: Form -> Form
-removeFirstOp (Infl _ f)   = f
-removeFirstOp (Selec _ f)  = f
+removeFirstOp (Infl _ _ f)   = f
+removeFirstOp (Selec _ _ f)  = f
 removeFirstOp (Conj xs)    = Conj (map removeFirstOp xs)
 removeFirstOp (Disj xs)    = Disj (map removeFirstOp xs)
 removeFirstOp g            = g --includes Top/Bot. Otherwise only here for pattern exhaustion.
 
---Removes all Infl Updates until a Selec is reached.
+--Removes all Infl Updates until a Selec is reached. Exception: Infl 0 not removed and stops the chain.
+--should only be called for Forms of Mode Basic
 removeLeadingInfl :: Form -> Form
-removeLeadingInfl (Infl _ f)    = removeLeadingInfl f
+removeLeadingInfl (Infl mode tau f)  | tau == 0 = Infl mode 0 f
+                                     | otherwise = removeLeadingInfl f
 removeLeadingInfl (Impl f1 f2)  = Impl (removeLeadingInfl f1) (removeLeadingInfl f2)
 removeLeadingInfl (Conj xs)     = Conj $ map removeLeadingInfl xs
 removeLeadingInfl (Disj xs)     = Disj $ map removeLeadingInfl xs
@@ -249,16 +305,26 @@ removeLeadingInfl f             = f -- includes Top, Bot, PrpF, and most importa
   To avoid a high percentage of generated formulas simplifying to Top/Bot, the random generation:
     - doesn't include pure Top/Bot
     - avoids empty list for Conj/Disj
+  LIke this less than 30% of generated formulas evaluate to Top/Bot.
+
+
+  We distinguish between Forms of Mode Basic and Forms of Mode Variant.
 -}
-instance Arbitrary Form where
-    arbitrary = sized randomForm
+
+newtype BasicForm = BasicForm Form deriving (Eq, Ord, Show)
+newtype VariantForm = VariantForm Form deriving (Eq, Ord, Show)
+
+
+instance Arbitrary BasicForm where
+    arbitrary = sized randomBasicForm
       where
 
         arbitraryAg = chooseInt (1, defaultNrAgs)
         arbitraryPos = P <$> chooseInt (1, nrPosTotal)
         arbitraryTpc = T <$> chooseInt (1, nrTpcs)
 
-        randomForm :: Int -> Gen Form
+        randomBasicForm :: Int -> Gen BasicForm
+        randomBasicForm i = BasicForm <$> randomForm i
         randomForm 0 = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
                              , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
                              ]
@@ -268,12 +334,38 @@ instance Arbitrary Form where
                              , Conj <$> listOf st `suchThat` (not . null)
                              , Disj <$> listOf st `suchThat` (not . null)
                              , Impl <$> st <*> st
-                             , Infl <$> genDouble <*> st
-                             , Selec <$> genDouble <*> st
+                             , Infl Basic <$> genDouble <*> st
+                             , Selec Basic <$> genDouble <*> st
                              ]
           where
             st = randomForm (n `div` 3)
 
+
+
+instance Arbitrary VariantForm where
+    arbitrary = sized randomVariantForm
+      where
+
+        arbitraryAg = chooseInt (1, defaultNrAgs)
+        arbitraryPos = P <$> chooseInt (1, nrPosTotal)
+        arbitraryTpc = T <$> chooseInt (1, nrTpcs)
+
+        randomVariantForm :: Int -> Gen VariantForm
+        randomVariantForm i = VariantForm <$> randomForm i
+        randomForm 0 = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
+                             , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
+                             ]
+        randomForm n = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
+                             , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
+                             , Neg <$> st
+                             , Conj <$> listOf st `suchThat` (not . null)
+                             , Disj <$> listOf st `suchThat` (not . null)
+                             , Impl <$> st <*> st
+                             , Infl Variant <$> genDouble <*> st
+                             , Selec Variant <$> genDouble <*> st
+                             ]
+          where
+            st = randomForm (n `div` 3)
 
 --TODO add shrink?? (maybe after I'm done with simplify and am sure it works...) see gattinger
 

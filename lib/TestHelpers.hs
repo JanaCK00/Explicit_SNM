@@ -83,32 +83,45 @@ isValidSNModel snm = all (\f -> f snm) [fullRel, nonEmptyAgs,
                                         nonEmptyTpcs, disjointPositionSets]
 
 
---TODO is this the easiest way to have it use random taus??? (between 0 and 1), no can just genereate Double and take
-newtype SpecialDouble = SpD Double deriving (Eq, Show)
-instance Arbitrary SpecialDouble where
-    arbitrary = SpD <$> genDouble
 
 --check if for two consecutive Selecs, only the last applied matters
-consecutiveSelec :: SNModel -> SpecialDouble -> SpecialDouble -> Bool
-consecutiveSelec m (SpD d1) (SpD d2) = updSelecMatrix d1 m == updSelecMatrix d1 (updSelecMatrix d2 m)
+consecutiveSelec :: SNModel -> Double -> Double -> Bool
+consecutiveSelec m d1 d2 = updSelecBasic d1' m == updSelecBasic d1' (updSelecBasic d2' m) where
+    d1' = properTau d1
+    d2' = properTau d2
+
+properTau :: Double -> Double
+properTau tau | isZeroFrac && odd intPart = 1
+              | otherwise                    = fracPart
+    where (intPart, fracPart) = properFraction tau
+          isZeroFrac = abs fracPart < epsilon
+          epsilon = 1e-12
 
 
 --test if an Infl after a Selec 1 doesn't change anything
-consInflSelecOne :: SNModel -> SpecialDouble  -> Bool
-consInflSelecOne m (SpD d1) = updSelecMatrix 1 m == updInflPreComp d1 (updSelecMatrix 1 m) --(order is not accrordning to syntax ;))
-
+consInflSelecOne :: SNModel -> Double  -> Bool
+consInflSelecOne m d1 = (updSelecBasic 1 m == updInflBasic d1' (updSelecBasic 1 m)) || d1' == 0.0 --(order is not accrordning to syntax ;))
+    where d1' = properTau d1
 --TODO check more things I did in simplify
 
 
 --check if an application of Selec makes all relations reflexive
-selecMakesRefl :: SNModel -> SpecialDouble -> Bool
-selecMakesRefl m (SpD d1) = updSelecMatrix d1 m == makeReflModel (updSelecMatrix d1 m)
+selecMakesRefl :: SNModel -> Double -> Bool
+selecMakesRefl m d1 = updSelecBasic d1' m == makeReflModel (updSelecBasic d1' m) where
+    d1' = properTau d1
 
 
 --check if an application of Selec makes all relations symmetric
-selecMakesSym :: SNModel -> SpecialDouble -> Bool
-selecMakesSym m (SpD d1) = updSelecMatrix d1 m == makeSymModel (updSelecMatrix d1 m)
+selecMakesSym :: SNModel -> Double -> Bool
+selecMakesSym m d1 = updSelecBasic d1' m == makeSymModel (updSelecBasic d1' m) where
+    d1' = properTau d1
 
+
+simplifyWorksBasic :: SNModel -> BasicForm -> Bool
+simplifyWorksBasic m (BasicForm f) = simplifyWorks m f
+
+simplifyWorksVariant :: SNModel -> VariantForm -> Bool
+simplifyWorksVariant m (VariantForm f) = simplifyWorks m f
 
 --checks if a Form evaluates to the same as its simplified version on a given SNModel
 simplifyWorks :: SNModel -> Form -> Bool
@@ -121,6 +134,12 @@ simplifyWorks m f = (m |= f) == (m |= simplify f)
 symAndRefl :: SNModel -> Bool
 symAndRefl m = (makeFullRelModel m == makeReflModel (makeFullRelModel m)) && (makeFullRelModel m == makeSymModel (makeFullRelModel m))
 
+isTrivialBasic :: BasicForm -> Bool
+isTrivialBasic (BasicForm f) = isTrivial f
+
+isTrivialVariant :: VariantForm -> Bool
+isTrivialVariant (VariantForm f) = isTrivial f
+
 --check if a formula simplifies to Top or Bot
 isTrivial :: Form -> Bool
 isTrivial f = f' == Top || f' == Bot where
@@ -128,24 +147,35 @@ isTrivial f = f' == Top || f' == Bot where
 
 
 --TODO delete !.!
-prop_trivialForm :: Form -> Property
-prop_trivialForm f =
-  classify (isTrivial f) "simplifies to Top/Bot" $
+prop_trivialFormBasic :: BasicForm -> Property
+prop_trivialFormBasic f =
+  classify (isTrivialBasic f) "simplifies to Top/Bot" $
+    property True
+
+prop_trivialFormVariant :: VariantForm -> Property
+prop_trivialFormVariant f =
+  classify (isTrivialVariant f) "simplifies to Top/Bot" $
     property True
 
 prop_numberOfTurns :: Double -> SNModel -> Property
 prop_numberOfTurns tau m =
-    let steps = snd $ fixCount ((updInflPreComp tau'). (updSelecMatrix tau')) m
-        tau' = snd $ properFraction tau in
+    let steps = snd $ fixCount ((updInflBasic tau'). (updSelecBasic tau')) m
+        tau' = properTau tau in
         collect steps $
         property True
 
 --check if a formula contains empty lists after Conj or Disj
+containsEmptyBasic :: BasicForm -> Bool
+containsEmptyBasic (BasicForm f) = containsEmpty f
+
+containsEmptyVariant :: VariantForm -> Bool
+containsEmptyVariant (VariantForm f) = containsEmpty f
+
 containsEmpty :: Form -> Bool
 containsEmpty (Conj xs) = null xs || any containsEmpty xs
 containsEmpty (Disj xs) = null xs || any containsEmpty xs
-containsEmpty (Infl _ f) = containsEmpty f
-containsEmpty (Selec _ f) = containsEmpty f
+containsEmpty (Infl _ _ f) = containsEmpty f
+containsEmpty (Selec _ _ f) = containsEmpty f
 containsEmpty (Impl f g) = containsEmpty f || containsEmpty g
 containsEmpty (Neg f) = containsEmpty f
 containsEmpty _ = False
@@ -153,13 +183,53 @@ containsEmpty _ = False
 --check if a simplified Form contains NO occurance of Top/Bot
 topBotFree :: Form -> Bool
 topBotFree = allSubf freePred where
-    freePred (Infl _ f)     = allSubf freePred f
-    freePred (Selec _ f)    = allSubf freePred f
+    freePred (Infl _ _ f)     = allSubf freePred f
+    freePred (Selec _ _ f)    = allSubf freePred f
     freePred (Adopted _ _ ) = True
     freePred (Connected {}) = True
     freePred _ = False --Includes Top, Bot (plus for the sake of pattern exhaustion, all complex cases, but those should be handled by allSubf)
 
 --check if a simplified Form either simplifies to be trivial, or simplifies so it doesn't contain any occurances of Top/Bot
+topBotpurityBasic :: BasicForm -> Bool
+topBotpurityBasic (BasicForm f) = topBotpurity f
+
+topBotpurityVariant :: VariantForm -> Bool
+topBotpurityVariant (VariantForm f) = topBotpurity f
+
+
 topBotpurity :: Form -> Bool
 topBotpurity f = f' == Top || (f'== Bot || topBotFree f') where
     f' = simplify f
+
+
+
+getFormBasic :: BasicForm -> Form
+getFormBasic (BasicForm f) = f
+
+getFormVariant :: VariantForm -> Form
+getFormVariant (VariantForm f) = f
+
+modeConsistentBas :: BasicForm -> Bool
+modeConsistentBas (BasicForm f) = checkModeConsistent f
+
+modeConsistentVar :: VariantForm -> Bool
+modeConsistentVar (VariantForm f) = checkModeConsistent f
+
+
+--CONTINUE HERE
+--check if nr of reachable agents nerver grows for variant Selec
+noGrowingReachable :: Double -> SNModel -> Bool
+noGrowingReachable tau m = transClosure
+    rel1 = rel m
+    rel2 = rel upM
+    upM = updSelecVariant tau m
+    transClosure rel' = makeReflexive $ makeTransitive $ combinedTopicsRel rel'
+
+--check if softer tau -> stronger tau leaves softer irrelevant
+variantSelecGrowingTau :: Double -> Double ->  SNModel
+variantSelecGrowingTau d1 d2 m | d1<= d2 = updSelecVariant d2' (updSelecVariant d1' m) = updSelecVariant d2' m
+                               | otherwise = variantSelecGrowingTau d2 d1 m
+    where
+    d1' = properTau d1
+    d2' = properTau d2
+

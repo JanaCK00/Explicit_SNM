@@ -55,37 +55,48 @@ spec = do
             \snm -> isValidSNModel (snm::SNModel)
 
 
---TODO change this, don't need special double -> can write property in testhelpers
     describe "Testing propoerties of update operations" $ do
         prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
-            \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::SpecialDouble) (i2::SpecialDouble)
-        prop "Arbitrary SNModel doesn't change with Infl after a Selec 1" $ do
-            \snm i1 -> consInflSelecOne  (snm::SNModel) (i1::SpecialDouble)
+            \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::Double) (i2::Double)
+        prop "Arbitrary SNModel doesn't change with Infl after a Selec 1 (except for Infl 0)" $ do
+            \snm i1 -> consInflSelecOne  (snm::SNModel) (i1::Double)
         prop "Arbitrary SNModel has reflexive relations after a selec operation" $ do
-            \snm i1 -> selecMakesRefl (snm::SNModel) (i1::SpecialDouble)
+            \snm i1 -> selecMakesRefl (snm::SNModel) (i1::Double)
         prop "Arbitrary SNModel has symmetric relations after selec operation" $ do
-            \snm i1 -> selecMakesSym (snm::SNModel) (i1::SpecialDouble)
-
-
---takes a while atm (updates are slow), maybe comment out when checking other stuff ;)
-    describe "Testing the simplify function" $ do
-        prop "Arbitrary formula evaluates to the same as it's simplified version on Arbitrary SNModel" $ do
-            \snm f -> simplifyWorks (snm::SNModel) (f::Form)
-
-
-    describe "Tests for formula generation and the simplify function" $ do
-        prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
-            \f -> not $ containsEmpty (f::Form)
-        prop "Dummy to see what percentage of generated Forms evaluates to Top or Bot" $ do
-            prop_trivialForm
+            \snm i1 -> selecMakesSym (snm::SNModel) (i1::Double)
         prop "Dummy to see how many steps until stable" $ do
             prop_numberOfTurns
+
+
+    describe "Testing the simplify function" $ do
+        prop "Arbitrary BasicForm evaluates to the same as its simplified version on Arbitrary SNModel" $ do
+            \snm f -> simplifyWorksBasic (snm::SNModel) (f::BasicForm)
+        prop "Arbitrary VariantForm evaluates to the same as its simplified version on Arbirtary SNModel" $ do
+            \snm f -> simplifyWorksVariant (snm::SNModel) (f::VariantForm)
+
+
+    describe "Tests for BasicForm generation" $ do
+        prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
+            \f -> not $ containsEmptyBasic (f::BasicForm)
+        prop "Dummy to see what percentage of generated Forms simpifies to Top or Bot" $ do
+            prop_trivialFormBasic
         prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
-            \f -> topBotpurity (f::Form)
+            \f -> topBotpurityBasic (f::BasicForm)
+        prop "Testing if every BasicForm is mode consistent" $ do
+            \f -> modeConsistentBas (f::BasicForm)
+
+    describe "Tests for VariantForm generation" $ do
+        prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
+            \f -> not $ containsEmptyVariant (f::VariantForm)
+        prop "Dummy to see what percentage of generated Forms simpifies to Top or Bot" $ do
+            prop_trivialFormVariant
+        prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
+            \f -> topBotpurityVariant (f::VariantForm)
+        prop "Testing if every VariantForm is mode consistent" $ do
+            \f -> modeConsistentVar (f::VariantForm)
 
 
 
 {-
 TODO think of things to check
-(maybe some axioms?)
 -}
