@@ -44,7 +44,7 @@ Assumptions on the form of SNM: (that aren't enforced here, but should be checke
 --PROBLEM: in my semantics, I'd have to go about it quite differently (safe lookups, can't just mapwithkey over the old map, bc some agents might be inserted or deleted from a map)
 data SNModel = SNM
  { nrAgents :: Int --agents are referred to by 1..nrAgents
- , positions :: M.Map Topic (Set Position) --pairwise disjoint sets. this could actually also be a map of sizes and then have the topic in the position like i planned originally...and you only need the list of positions for a topic to go through for the annpying case of Infl 0...BUT: for UpdInfl it's cleaner to have stuff seperated by topics, we couldn't merge the dual maps. And then you hae to carry the info around, for each operation
+ , positions :: M.Map Topic (Set Position) --pairwise disjoint sets ACHTUNG TODO : TOPICS CAN NOT INCLUDE (T 0), that's a special case reserved for internal use!
  , rel :: M.Map Topic Relation --the social networks, every topic should be a key
  , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, every agent in each submap should be a key TODO maybe not every agent should be a key...it's not too unlikely that they don't take any position on a certain topic
  } deriving (Eq, Show)
@@ -174,9 +174,12 @@ fixCount f = go 0
 
 examplePaper :: SNModel
 examplePaper = SNM 4 positions' rel' dual' where
-  positions' = M.singleton (T 1) (S.fromList $ map P [1..4])
-  rel' = M.singleton (T 1) $ makeEmptyRel 4
-  dual' = M.singleton (T 1) (IntMap.fromList [(1, S.singleton (P 1)), (2,S.fromList [P 2, P 3]), (3, S.singleton (P 4)), (4, S.fromList [P 1, P 2, P 3])])
+  positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
+  rel' = M.fromList $ zip (map T [1,2,3]) $ replicate 3 (makeEmptyRel 4)
+  dual' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
+  fDual = IntMap.fromList [(1, S.fromList[P 2, P 3, P 4]), (2, S.singleton(P 2)), (3, S.fromList[P 1, P 3, P 4]), (4, S.fromList[P 3,P 4])]
+  mDual = IntMap.fromList [(1, S.singleton (P 5)), (2,S.fromList [P 6, P 7]), (3, S.singleton (P 8)), (4, S.fromList [P 5, P 6, P 7])]
+  sDual = IntMap.fromList [(1, S.fromList[P 9, P 10, P 11, P 12]), (2, S.singleton(P 11)), (3, S.fromList [P 9, P 12]), (4, S.fromList[P 9, P 10])]
 
 
 
@@ -190,38 +193,24 @@ It uses lists instead of sets, bc the sublist function would require list conver
 Given a list of agents (duplicate-free), (second argument is the recursively decreasing one),
 generates an arbitrary binary relation.
 -}
-randomRel :: [Agent] -> [Agent] -> Gen Relation
-randomRel _ [] = return IntMap.empty
-randomRel allAgs (ag:ags) = do
+randomRel :: [Agent] -> Int -> Gen Relation
+randomRel _ 0 = return IntMap.empty
+randomRel allAgs n = do
     thisAgsFriends <- IntSet.fromList <$> sublistOf allAgs --TODO if this is empty -> don't add to map?
-    rest <- randomRel allAgs ags
-    return $ IntMap.insert ag thisAgsFriends rest
+    rest <- randomRel allAgs (n-1)
+    return $ IntMap.insert n thisAgsFriends rest
 
 {-
   Given a list of agents and a list of topics (both duplicate-free), generates an arbitrary
   relation for each topic. This function applies randomRel to each topic.
   adapted from symbolic-topo-e-models.Explicit.kripkeModels
 -}
-randomRelMap :: [Agent] -> [Topic] -> Gen (M.Map Topic Relation)
+randomRelMap :: Int -> [Topic] -> Gen (M.Map Topic Relation)
 randomRelMap _ [] = return M.empty
-randomRelMap ags (t:tpcs) =  do
-    thisTpcsRel <- randomRel ags ags
-    rest <- randomRelMap ags tpcs
+randomRelMap nrAgs (t:tpcs) =  do
+    thisTpcsRel <- randomRel [1..nrAgs] nrAgs
+    rest <- randomRelMap nrAgs tpcs
     return $ M.insert t thisTpcsRel rest
-
-
-{-
-TODO maybe delete, not used
-{-
-Given a list of agents and a list of positions (both duplicate-free), generate a random Valuation
--}
-randomVal :: [Agent] -> [Position] -> Gen (M.Map Position AgentSet)
-randomVal _ [] = return M.empty
-randomVal ags (p:pos) = do
-    thisPosAgs <- IntSet.fromList <$> sublistOf ags
-    rest <- randomVal ags pos
-    return $ M.insert p thisPosAgs rest
--}
 
 
 {-
@@ -272,12 +261,11 @@ randomPosMap ts ps = do
 instance Arbitrary SNModel where
   arbitrary = do
     --TODO limit some stuff? (not necessary, bc I don't close under reflexivity/transitivity?)
-    let ags = [1..defaultNrAgs] --TODO could change this to have different number of agents, be the nr between 1 and defaultNrAgs
-        tpcs = map T [1..nrTpcs] --here too
-        pos = map P [1..nrPosTotal] --and then this could be between number of tpcs and like 10-20 times that
+    let tpcs = map T [1..nrTpcs] --fixed for formula generation purposes
+        pos = map P [1..nrPosTotal] --fixed for formula generation purposes
     randomTPMap <- randomPosMap tpcs pos
-    randomRels <- randomRelMap ags tpcs
-    randomDual <- randomDualMap randomTPMap ags
+    randomRels <- randomRelMap defaultNrAgs tpcs
+    randomDual <- randomDualMap randomTPMap [1..defaultNrAgs]
     return (SNM defaultNrAgs randomTPMap randomRels randomDual)
 
 
