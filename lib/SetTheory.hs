@@ -27,6 +27,8 @@ import Test.QuickCheck
 import Test.QuickCheck.Gen (suchThat)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
+import qualified Data.Vector as V
+import Data.Vector (Vector) --vectors are 0-based!!
 
 --Adapted from symbolic-topo-e-models.SetTheory.hs
 
@@ -35,20 +37,21 @@ import qualified Data.IntMap.Strict as IntMap
 
 type Agent = Int
 type AgentSet = IntSet
-type Relation = IntMap AgentSet --every agent should be a key, TODO maybe not every agent should be a key...but how likely is it, that they don't have any friends? not very i guess...
-
+type Relation = Vector AgentSet --represents a relation where at the i-th index we store the set of agents that are socially connected to agent i. an empty set if none
+--assuming zero friends are rare, this gives O(1) access
 
 --Given a Relation, make it reflexive.
 makeReflexive :: Relation -> Relation
-makeReflexive = IntMap.mapWithKey IntSet.insert
+makeReflexive = V.imap IntSet.insert
+
 
 
 --Given a Relation, make it symmetric.
 makeSymmetric :: Relation -> Relation
-makeSymmetric rel = makeSym (IntMap.toList rel) rel where
-  makeSym [] acc = acc
-  makeSym ((ag, friends):rest) acc = makeSym rest (IntMap.mapWithKey addMe acc) where
-    addMe a f | a `IntSet.member` friends = IntSet.insert ag f
+makeSymmetric rel = makeSym 0 (V.toList rel) rel where
+  makeSym _ [] acc = acc
+  makeSym i (ifriends:rest) acc = makeSym (i+1) rest (V.imap addMe acc) where
+    addMe a f | a `IntSet.member` ifriends = IntSet.insert i f
               | otherwise                 = f
 
 {-
@@ -58,8 +61,8 @@ makeSymmetric rel = makeSym (IntMap.toList rel) rel where
 -}
 makeTransitive :: Relation -> Relation
 makeTransitive rel = lfp makeTransOnce rel where
-  makeTransOnce = IntMap.map addRel
-  addRel val = IntSet.unions [rel IntMap.! w | w <- IntSet.toList val] `IntSet.union` val
+  makeTransOnce = V.map addRel
+  addRel val = IntSet.unions [rel V.! w | w <- IntSet.toList val] `IntSet.union` val
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.

@@ -319,7 +319,7 @@ instance Arbitrary BasicForm where
     arbitrary = sized randomBasicForm
       where
 
-        arbitraryAg = chooseInt (1, defaultNrAgs)
+        arbitraryAg = chooseInt (0, defaultNrAgs-1)
         arbitraryPos = P <$> chooseInt (1, nrPosTotal)
         arbitraryTpc = T <$> chooseInt (1, nrTpcs)
 
@@ -346,7 +346,7 @@ instance Arbitrary VariantForm where
     arbitrary = sized randomVariantForm
       where
 
-        arbitraryAg = chooseInt (1, defaultNrAgs)
+        arbitraryAg = chooseInt (0, defaultNrAgs-1)
         arbitraryPos = P <$> chooseInt (1, nrPosTotal)
         arbitraryTpc = T <$> chooseInt (1, nrTpcs)
 
@@ -366,6 +366,8 @@ instance Arbitrary VariantForm where
                              ]
           where
             st = randomForm (n `div` 3)
+
+--TODO add generation of mixed mode formulas?
 
 --TODO add shrink?? (maybe after I'm done with simplify and am sure it works...) see gattinger
 

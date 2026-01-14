@@ -17,13 +17,7 @@ spec = do
     describe "Testing for full Maps" $ do
         prop "Arbitrary SNModel has complete Relations maps" $ do
             \snm -> fullRel (snm::SNModel)
-        prop "Arbitrary SNModel has full dual Maps" $ do
-            \snm -> fullDual (snm::SNModel)
-        --prop "Arbitrary SNModel has a complete Valuation map" $ do
-            -- \snm -> fullVal (snm::SNModel)
-    --describe "Testing a falsifiable formula" $ do
-        --prop "Arbitrary SNModel fulfills falsifiable formula" $ do
-            -- \snm -> (snm::SNModel) |= propo1
+
     {-
     will only be useful if I change generation away from using default sets
     -}
@@ -35,27 +29,23 @@ spec = do
         prop "Arbitrary SNModel has non-empty set of positions"  $ do
             \snm -> nonEmptyPos (snm::SNModel)
 
-{-}
-    describe "Testing for valid positions (topics map to only positions that belong to them)" $ do
-        prop "Arbitrary SNModel has valid positions map" $ do
-            \snm -> validPositions (snm::SNModel)
 
-            -}
     describe "Testing for unqique positions across topics" $ do
         prop "Arbitrary SNModel has pairwise disjoint Positions across Topics" $ do
             \snm -> disjointPositionSets (snm::SNModel)
 
-    {-describe "Testing for no duplicates in the model" $ do
-        prop "Arbitrary SNModel has no duplicates in fields" $ do
-            \snm -> noDuplicates (snm::SNModel)
-        -}
+
 
     describe "Testing if all properties are fulfilled" $ do
         prop "Arbitrary SNModel is a social networks model" $ do
             \snm -> isValidSNModel (snm::SNModel)
 
 
-    describe "Testing propoerties of update operations" $ do
+    describe "Testing propoerties of basic update operations" $ do
+        prop "Basic Infl operation leaves relations of arbitrary SNModel unchanged" $ do
+            \snm i1 -> inflNotChangeRel (i1::Double) (snm::SNModel)
+        prop "Basic Selec operation leaves positions of agents of arbitrary SNModel unchanged" $ do
+            \snm i1 -> selecNotChangeDual (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
             \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::Double) (i2::Double)
         prop "Arbitrary SNModel doesn't change with Infl after a Selec 1 (except for Infl 0)" $ do
@@ -66,6 +56,48 @@ spec = do
             \snm i1 -> selecMakesSym (snm::SNModel) (i1::Double)
         prop "Dummy to see how many steps until stable" $ do
             prop_numberOfTurns
+        prop "Updates on Example 2 from paper Smets et al (2020) are correctly computed (SelecBasic, InflBasic)" $ do
+            exPaperstep1 == updSelecBasic 0.5 exPaperstep0 &&
+                exPaperstep2 == updInflBasic 0.5 exPaperstep1 &&
+                exPaperstep3 == updSelecBasic 0.5 exPaperstep2 &&
+                exPaperstep4 == updInflBasic 0.5 exPaperstep3 &&
+                exPaperstep5 == updSelecBasic 0.5 exPaperstep4 &&
+                exPaperstep5 == updInflBasic 0.5 exPaperstep5
+
+
+    describe "Testing properties of combined variant update operations" $ do
+        prop "Arbitrary SNModel isn't affected by SelecVar tau1 if a SelecVar tau2 is applied after (with tau2>=tau1)" $ do
+            \snm i1 i2 -> variantSelecGrowingTau (i1::Double) (i2::Double)  (snm::SNModel)
+        prop "Variant Infl operation leaves relations of arbitrary SNModel unchanged" $ do
+            \snm i1 -> inflVarNotChangeRel (i1::Double) (snm::SNModel)
+        prop "Variant Selec operation leaves positions of agents of arbitrary SNModel unchanged" $ do
+            \snm i1 -> selecVarNotChangeDual (i1::Double) (snm::SNModel)
+        prop "Arbitrary SNModel has reflexive relations after a variant selec operation" $ do
+            \snm i1 -> selecMakesReflVariant (snm::SNModel) (i1::Double)
+        prop "A Selec Variant operation on an arbitrary SNModel doesn't increases the number of reachable agents for any agent" $ do
+            \snm i1 -> noGrowingReachable (i1::Double) (snm::SNModel)
+        prop "Dummy to see how many steps until stable variant" $ do
+            prop_numberOfTurnsVariant
+        prop "Updates on Example 4 from paper Smets et al (2020) are correctly computed (SelecBasic, InflVariant)" $ do
+            exPaperVarstep1 == updSelecBasic 0.5 exPaperVarstep0 &&
+                exPaperVarstep2 == updInflVariant 0.5 exPaperVarstep1 &&
+                exPaperVarstep3 == updSelecBasic 0.5 exPaperVarstep2 &&
+                exPaperVarstep4 == updInflVariant 0.5 exPaperVarstep3 &&
+                exPaperVarstep5 == updSelecBasic 0.5 exPaperVarstep4 &&
+                exPaperVarstep5 == updInflVariant 0.5 exPaperVarstep5
+        prop "Updates on own example are correctly computed (InflVariant, SelecVariant)" $ do
+            exOwnstep1 == updInflVariant 0.5 exOwnstep0 &&
+                exOwnstep2 == updSelecVariant 0.5 exOwnstep1 &&
+                exOwnstep3 == updInflVariant 0.5 exOwnstep2 &&
+                exOwnstep4 == updSelecVariant 0.5 exOwnstep3 &&
+                exOwnstep4 == updInflVariant 0.5 exOwnstep4
+
+        {- both have been falsified :)
+        prop "Keyword Testing part of SelecVariant:  makeReflexive never makes a difference in transclosure (should be falsified)" $ do
+            \snm -> testmakeReflexive (snm::SNModel)
+        prop "Keyword Testing part of SelecVariant: combined Topics rel is always reflexive (should be falsified)" $ do
+            \snm -> testcombinedTopicsRel (snm::SNModel)
+-}
 
 
     describe "Testing the simplify function" $ do
@@ -95,8 +127,3 @@ spec = do
         prop "Testing if every VariantForm is mode consistent" $ do
             \f -> modeConsistentVar (f::VariantForm)
 
-
-
-{-
-TODO think of things to check
--}

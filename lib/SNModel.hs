@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 module SNModel where
 
 --TODO only necessary imports
@@ -5,7 +7,7 @@ import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , sublistOf  )
-import Test.QuickCheck.Gen (chooseInt)
+import Test.QuickCheck.Gen (chooseInt, suchThat)
 import qualified Data.Map.Strict as M
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
@@ -15,6 +17,8 @@ import Data.Set (Set)
 import qualified Data.IntSet as IntSet
 import SetTheory
 import Data.Bits (testBit)
+import qualified Data.Vector as V
+import Data.Vector (Vector)
 
 {-
 Explicit representation of Social Network Models following Smets et al. (2020)
@@ -35,32 +39,31 @@ Social networks don't have to satisfy any properties
 Assumptions on the form of SNM: (that aren't enforced here, but should be checked before working with a model)
 
 (1) All sets/maps should by def be non-empty.
-(2) The sets of Positions are pairwise disjoint across topics. TODO manually double them when a provded model violates this.
-(3) All Maps are full (every Topic or Positions respectively is a key (even if it just maps to the empty set))
+(2) The sets of Positions are pairwise disjoint across topics. TODO manually double them when a provided model violates this.
+(3) The maps contain every topic of the model as a key. Dual_t only contains agents as keys who have non-empty set of positions in that topic
+--TODO CHECK THE LATTER OF THE LAST SENTENCE
 -}
 
---TODO change that the maps aren't full???? so you save space when many people e.g. don't have friends, you also get faster lookips for sparse case
---and: for the dual, you could also save the agents that don't have a positions on that topic...
---PROBLEM: in my semantics, I'd have to go about it quite differently (safe lookups, can't just mapwithkey over the old map, bc some agents might be inserted or deleted from a map)
+
 data SNModel = SNM
- { nrAgents :: Int --agents are referred to by 1..nrAgents
+ { nrAgents :: Int --agents are referred to by 0 .. (nrAgents - 1)
  , positions :: M.Map Topic (Set Position) --pairwise disjoint sets ACHTUNG TODO : TOPICS CAN NOT INCLUDE (T 0), that's a special case reserved for internal use!
  , rel :: M.Map Topic Relation --the social networks, every topic should be a key
- , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, every agent in each submap should be a key TODO maybe not every agent should be a key...it's not too unlikely that they don't take any position on a certain topic
+ , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, TODO we are changing this away from each agents being a key (bc no position taken is also quite common)
  } deriving (Eq, Show)
-
+--TODO maybe write a better Show?
 
 --See definitions for Agent/Relation in SetTheory.hs
 
-newtype Topic = T Int deriving (Eq, Show, Ord)
+newtype Topic = T Int deriving (Eq, Show, Ord) --T 0 is reserved for internal use
 newtype Position = P Int deriving (Eq, Show, Ord)
 
 
 --CHANGE default values if neded
 defaultNrAgs, nrTpcs, nrPosTotal :: Int
-defaultNrAgs = 100
-nrTpcs = 10
-nrPosTotal = 100 --number of positions in total, make sure nrPosTotal >= (2*)nrTpcs
+defaultNrAgs = 5
+nrTpcs = 2
+nrPosTotal = 10 --number of positions in total, make sure nrPosTotal >= (2*)nrTpcs
 
 
 
@@ -69,12 +72,12 @@ some hardcoded examples
 -}
 
 
-alice, bob, carol, danny, emily :: Int
-alice = 1
-bob = 2
-carol = 3
-danny = 4
-emily = 5
+alice, bob, carol, david, emily :: Int
+alice = 0
+bob = 1
+carol = 2
+david = 3
+emily = 4
 
 books, games, sports :: Topic
 books = T 1
@@ -101,23 +104,26 @@ rolePlaying = P 6
 gamesPositions :: Set Position
 gamesPositions = S.fromList [cardGames, boardGames, rolePlaying]
 
-teamSports, running, weights :: Position
+teamSports, endurance, weights :: Position
 teamSports = P 7
-running = P 8
+endurance = P 8
 weights = P 9
 
 sportsPositions :: Set Position
-sportsPositions = S.fromList [teamSports, running, weights]
+sportsPositions = S.fromList [teamSports, endurance, weights]
 
-a, b, c, d, ab, ac, bc, abc :: AgentSet
+a, b, c, d, ab, ac, bc, abc, ad, cd, acd :: AgentSet
 a = IntSet.singleton alice
 b = IntSet.singleton bob
 c = IntSet.singleton carol
 ab = IntSet.fromList [alice, bob]
 ac = IntSet.fromList [alice, carol]
 bc = IntSet.fromList [bob, carol]
+cd = IntSet.fromList [carol, david]
 abc = IntSet.fromList [alice, bob, carol]
-d = IntSet.singleton danny
+d = IntSet.singleton david
+ad = IntSet.fromList [alice, david]
+acd = IntSet.fromList [alice, carol, david]
 
 {-
 TODO construct better example!
@@ -127,26 +133,26 @@ exampleSmall :: SNModel
 exampleSmall = SNM 3 positions' rel' dual' where
     positions' = M.fromList [(books, booksPositions), (games, gamesPositions), (sports, sportsPositions)]
     rel' = M.fromList [(books, booksRel), (games, gamesRel), (sports, sportsRel)] where
-        booksRel = IntMap.fromList [(alice, abc),(bob, IntSet.empty),(carol, ac)]
-        gamesRel = IntMap.fromList [(alice, IntSet.empty), (bob, b),(carol, b)]
-        sportsRel = IntMap.fromList [(alice, ac), (bob, IntSet.empty), (carol, a)]
+        booksRel = V.fromList [abc, IntSet.empty, ac]
+        gamesRel = V.fromList [IntSet.empty, b, b]
+        sportsRel = V.fromList [ac, IntSet.empty, a]
     dual' = M.fromList [(books, bookdual) , (games, gamesdual), (sports, sportsdual)] where
-        bookdual = IntMap.fromList [(1, S.fromList [fantasy, romance]), (2, S.singleton romance), (3, S.fromList [fantasy, nonFiction])]
-        gamesdual = IntMap.fromList [(1, S.empty), (2, S.singleton cardGames), (3, S.fromList [boardGames, cardGames])]
-        sportsdual = IntMap.fromList [(1, S.fromList [teamSports,running,weights]), (2, S.singleton weights), (3, S.fromList [weights, running])]
+        bookdual = IntMap.fromList [(0, S.fromList [fantasy, romance]), (1, S.singleton romance), (2, S.fromList [fantasy, nonFiction])]
+        gamesdual = IntMap.fromList [(1, S.singleton cardGames), (2, S.fromList [boardGames, cardGames])]
+        sportsdual = IntMap.fromList [(0, S.fromList [teamSports,endurance,weights]), (1, S.singleton weights), (2, S.fromList [weights, endurance])]
 
 
 {-
 --TODO bit of a boring example, it's for simple testing of the settheory stuff
 exampleCircleFriendship :: SNModel
 exampleCircleFriendship = SNM 4 positions' rel' val' where
-  --group = IntSet.fromList [alice, bob, carol, danny]
+  --group = IntSet.fromList [alice, bob, carol, david]
   positions' = M.fromList [(books, booksPositions), (games, gamesPositions), (sports, sportsPositions)]
   rel' = M.fromList [(books, booksRel), (games, gamesRel), (sports, sportsRel)] where
-        booksRel = M.fromList [(alice, b),(bob, c),(carol, d), (danny,a)]
-        gamesRel = M.fromList [(alice, b),(bob, c),(carol, d), (danny,a)]
-        sportsRel = M.fromList [(alice, b),(bob, c),(carol, d), (danny,a)]
-  val' = M.fromList [(fantasy, ac), (romance, ab), (nonFiction, c), (cardGames, bc), (boardGames, c), (rolePlaying, IntSet.empty), (teamSports, a), (running, ac), (weights, abc)]
+        booksRel = M.fromList [(alice, b),(bob, c),(carol, d), (david,a)]
+        gamesRel = M.fromList [(alice, b),(bob, c),(carol, d), (david,a)]
+        sportsRel = M.fromList [(alice, b),(bob, c),(carol, d), (david,a)]
+  val' = M.fromList [(fantasy, ac), (romance, ab), (nonFiction, c), (cardGames, bc), (boardGames, c), (rolePlaying, IntSet.empty), (teamSports, a), (endurance, ac), (weights, abc)]
 -}
 
 
@@ -158,11 +164,12 @@ exampleStab n = SNM stabAgSize positions' rel' dual'  where
   stabAgSize = 2^n
   positions' = M.singleton (T 1) (S.fromList $ map P [1..stabPosSize])
   rel'       = M.singleton (T 1) $ makeEmptyRel stabAgSize
-  dual'      = M.singleton (T 1) (foldl (\cur i -> IntMap.insert i (constructBitSet i) cur) IntMap.empty [1..stabAgSize]) where
-    constructBitSet i = S.fromList $ map (P . (+1)) $ filter (testBit i) [0..(stabPosSize-1)]
+  dual'      = M.singleton (T 1) (foldl (\cur i -> IntMap.insert i (constructSet i) cur) IntMap.empty [0..stabAgSize-1]) where
+    constructSet i = S.fromList $ map (P . (+1)) $ filter (testBit i) [0..(stabPosSize-1)]
 
 
--- ACHTUNG ! .. !
+-- ACHTUNG ! ..
+--TODO make it safe (like break at 100 or something)
 fixCount :: Eq a => (a -> a) -> a -> (a, Int)
 fixCount f = go 0
   where
@@ -177,12 +184,17 @@ examplePaper = SNM 4 positions' rel' dual' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
   rel' = M.fromList $ zip (map T [1,2,3]) $ replicate 3 (makeEmptyRel 4)
   dual' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(1, S.fromList[P 2, P 3, P 4]), (2, S.singleton(P 2)), (3, S.fromList[P 1, P 3, P 4]), (4, S.fromList[P 3,P 4])]
-  mDual = IntMap.fromList [(1, S.singleton (P 5)), (2,S.fromList [P 6, P 7]), (3, S.singleton (P 8)), (4, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(1, S.fromList[P 9, P 10, P 11, P 12]), (2, S.singleton(P 11)), (3, S.fromList [P 9, P 12]), (4, S.fromList[P 9, P 10])]
+  fDual = IntMap.fromList [(0, S.fromList[P 2, P 3, P 4]), (1, S.singleton(P 2)), (2, S.fromList[P 1, P 3, P 4]), (3, S.fromList[P 3,P 4])]
+  mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
+  sDual = IntMap.fromList [(0, S.fromList[P 9, P 10, P 11, P 12]), (1, S.singleton(P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList[P 9, P 10])]
 
-
-
+exampleLogicSection :: SNModel
+exampleLogicSection = SNM 4 positions' rel' dual' where
+  positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
+  rel' = M.fromList [(T 1, V.fromList [a, a, ad, a]), (T 2, V.fromList [a, b, c, d])]
+  dual' = M.fromList [(T 1, bDual), (T 2, sDual)]
+  bDual = IntMap.fromList [(0, S.fromList[P 1, P 2]), (1, S.singleton(P 2)), (2, S.fromList[P 2, P 3]), (3, S.fromList[P 2,P 3])]
+  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
 {-
 these work with the provided lists of agents/topics/positions, not only with the default :)
 so it can also be used for generating a model based on user input...
@@ -190,15 +202,26 @@ It uses lists instead of sets, bc the sublist function would require list conver
 -}
 
 {-
-Given a list of agents (duplicate-free), (second argument is the recursively decreasing one),
-generates an arbitrary binary relation.
+Given a list a number agents, generates an arbitrary binary relation.
 -}
-randomRel :: [Agent] -> Int -> Gen Relation
-randomRel _ 0 = return IntMap.empty
-randomRel allAgs n = do
-    thisAgsFriends <- IntSet.fromList <$> sublistOf allAgs --TODO if this is empty -> don't add to map?
-    rest <- randomRel allAgs (n-1)
-    return $ IntMap.insert n thisAgsFriends rest
+
+{- ussage in ghci:
+import Test.QuickCheck
+generate (randomRel 4)
+-}
+randomRel :: Int -> Gen Relation
+randomRel nrAgs = do
+  list <- randomRelList nrAgs nrAgs
+  return $ V.fromList list
+
+--second argument it the recursively decreasing one
+randomRelList :: Int -> Int -> Gen [IntSet.IntSet]
+randomRelList _ 0 = return []
+randomRelList nrAgs n = do
+    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1] -- TODO think about restricting `suchThat` (\xs -> length xs <= (nrAgs `div` 10))
+    rest <- randomRelList nrAgs (n-1)
+    return $ thisAgsFriends:rest
+
 
 {-
   Given a list of agents and a list of topics (both duplicate-free), generates an arbitrary
@@ -208,7 +231,7 @@ randomRel allAgs n = do
 randomRelMap :: Int -> [Topic] -> Gen (M.Map Topic Relation)
 randomRelMap _ [] = return M.empty
 randomRelMap nrAgs (t:tpcs) =  do
-    thisTpcsRel <- randomRel [1..nrAgs] nrAgs
+    thisTpcsRel <- randomRel nrAgs
     rest <- randomRelMap nrAgs tpcs
     return $ M.insert t thisTpcsRel rest
 
@@ -219,10 +242,12 @@ Given a list of positions of a certain topic and a list of agents (both duplicat
 randomDualT :: Set Position -> [Agent] -> Gen (IntMap (Set Position))
 randomDualT _ [] = return IntMap.empty
 randomDualT pos (ag:ags) = do
-    thisAgsPos <- subsetOf pos --TODO if this is empty -> don't add to map?
+    thisAgsPos <- subsetOf pos
     rest <- randomDualT pos ags
-    return $ IntMap.insert ag thisAgsPos rest
-
+    if S.size thisAgsPos > 0 then
+      return $ IntMap.insert ag thisAgsPos rest
+    else
+      return rest
 
 --takes the positions map and a list of agents, applies randomDualT for each topic
 --then returns randomDual
@@ -230,14 +255,13 @@ randomDualMap :: M.Map Topic (Set Position) -> [Agent] -> Gen (M.Map Topic (IntM
 randomDualMap posMap ags = traverse (`randomDualT` ags) posMap
 
 
---TODO decide if topics with just one positions even make sense...right now it gives at least 2 positions per topic
 --assumes length list >= Int
---takes an Int and a list. generates a partition with exactly Int number of  non-empty subsets
+--takes an Int and a list. generates a partition with exactly Int number of non-empty subsets
 randomPart :: Int -> [a] -> Gen [[a]]
 randomPart 1 xs = return [xs]
 randomPart l xs = do
   let n = length xs
-  thisLength <- chooseInt (2, n - 2*(l - 1)) --make sure the rest of the (l-1) partitions still get at least two elements each
+  thisLength <- chooseInt (1, n - l + 1) --make sure the rest of the (l-1) partitions still get at least one element each
   let (first, rest) = splitAt thisLength xs
   restPart <- randomPart (l-1) rest
   return $ first : restPart
@@ -245,7 +269,7 @@ randomPart l xs = do
 
 {-
 given a list of topics and a list of positions (both duplicate free & non-empty, ASSUMES length ps>=length ts)
-generate a mapping from topics to sets of positions (pariwise disjoint, non-empty)
+generate a mapping from topics to sets of positions (pairwise disjoint, non-empty)
 -}
 randomPosMap :: [Topic] -> [Position] -> Gen (M.Map Topic (Set Position))
 randomPosMap ts ps = do
@@ -265,7 +289,7 @@ instance Arbitrary SNModel where
         pos = map P [1..nrPosTotal] --fixed for formula generation purposes
     randomTPMap <- randomPosMap tpcs pos
     randomRels <- randomRelMap defaultNrAgs tpcs
-    randomDual <- randomDualMap randomTPMap [1..defaultNrAgs]
+    randomDual <- randomDualMap randomTPMap [0..defaultNrAgs-1]
     return (SNM defaultNrAgs randomTPMap randomRels randomDual)
 
 
@@ -273,15 +297,17 @@ instance Arbitrary SNModel where
 
 --takes a SNModel and makes full relations for all topics
 makeFullRelModel :: SNModel -> SNModel
-makeFullRelModel m@(SNM nrAgents' _ rel' _) = m { rel = M.map fullRel rel' } where
-    fullRel = IntMap.map allFriends
-    allFriends _ = IntSet.fromList [1..nrAgents']
+makeFullRelModel m@(SNM nrAgents' pos' _ _) = m { rel = fullRels } where
+    fullRels = M.fromList $ map (, fullRel) (M.keys pos')
+    fullRel = makeFullRel nrAgents'
 
 
---TODO check if this works
---takes a number of agents and creates an empty Relation (each agent is a key in the map)
+makeFullRel :: Int -> Relation
+makeFullRel n = V.replicate n $ IntSet.fromList [0..(n-1)]
+
+--takes a number of agents and creates an empty Relation
 makeEmptyRel :: Int -> Relation
-makeEmptyRel n = foldl (\cur i -> IntMap.insert i IntSet.empty cur) IntMap.empty [1..n]
+makeEmptyRel n = V.replicate n IntSet.empty
 
 
 --takes a SNModel and makes all its relations reflexive
