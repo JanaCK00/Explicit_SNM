@@ -28,6 +28,30 @@ spec = do
             \snm -> nonEmptyTpcs (snm::SNModel)
         prop "Arbitrary SNModel has non-empty set of positions"  $ do
             \snm -> nonEmptyPos (snm::SNModel)
+        prop "Arbitrary SNModel has no dual mapping any agent to the empty set" $ do
+            \snm -> nonEmptyDualmapping (snm::SNModel)
+        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Basic Infl" $ do
+            \snm i1 -> nonEmptyDualmappingBasicInfl (i1::Double) (snm::SNModel)
+        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Basic Selec" $ do
+            \snm i1 -> nonEmptyDualmappingBasicSelec (i1::Double) (snm::SNModel)
+        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Variant Infl" $ do
+            \snm i1 -> nonEmptyDualmappingVariantInfl (i1::Double) (snm::SNModel)
+        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Variant Selec" $ do
+            \snm i1 -> nonEmptyDualmappingVariantSelec (i1::Double) (snm::SNModel)
+
+{- were all falsified, as expected :)
+        prop "All SNModels map every agent in all dual_t (should be falsified)" $ do
+            \snm -> fullDual (snm::SNModel)
+        prop "All SNModels map every agent in all dual_t after Basic Infl(should be falsified)" $ do
+            \snm i1 -> fullDualBasicInfl (i1::Double) (snm::SNModel)
+        prop "All SNModels map every agent in all dual_t after Basic Selec(should be falsified)" $ do
+            \snm i1 -> fullDualBasicSelec (i1::Double) (snm::SNModel)
+        prop "All SNModels map every agent in all dual_t after Variant Infl (should be falsified)" $ do
+            \snm i1 -> fullDualVariantInfl (i1::Double) (snm::SNModel)
+        prop "All SNModels map every agent in all dual_t after Variant Selec(should be falsified)" $ do
+            \snm i1 -> fullDualVariantSelec (i1::Double) (snm::SNModel)
+
+-}
 
 
     describe "Testing for unqique positions across topics" $ do

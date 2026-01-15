@@ -18,8 +18,8 @@ dependencies:
   - graphviz
   - hspec
   - smcdel
-  - matrix #TODO added for trying out, maybe remove again
-  - vector ##TODO added for trying out, maybe remove again
+  - matrix
+  - vector
 
 library:
   source-dirs: lib

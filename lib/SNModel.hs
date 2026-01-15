@@ -18,7 +18,6 @@ import qualified Data.IntSet as IntSet
 import SetTheory
 import Data.Bits (testBit)
 import qualified Data.Vector as V
-import Data.Vector (Vector)
 
 {-
 Explicit representation of Social Network Models following Smets et al. (2020)
@@ -41,7 +40,6 @@ Assumptions on the form of SNM: (that aren't enforced here, but should be checke
 (1) All sets/maps should by def be non-empty.
 (2) The sets of Positions are pairwise disjoint across topics. TODO manually double them when a provided model violates this.
 (3) The maps contain every topic of the model as a key. Dual_t only contains agents as keys who have non-empty set of positions in that topic
---TODO CHECK THE LATTER OF THE LAST SENTENCE
 -}
 
 
@@ -61,10 +59,9 @@ newtype Position = P Int deriving (Eq, Show, Ord)
 
 --CHANGE default values if neded
 defaultNrAgs, nrTpcs, nrPosTotal :: Int
-defaultNrAgs = 5
-nrTpcs = 2
-nrPosTotal = 10 --number of positions in total, make sure nrPosTotal >= (2*)nrTpcs
-
+defaultNrAgs = 100
+nrTpcs = 5
+nrPosTotal = 20 --number of positions in total, make sure nrPosTotal >= nrTpcs
 
 
 {-

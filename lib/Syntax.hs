@@ -374,6 +374,7 @@ instance Arbitrary VariantForm where
 {-
 usage in ghci:
 import Test.QuickCheck
-myForm <- generate arbitrary :: IO Form --(default sized passed is 30)
+myForm <- generate arbitrary :: IO BasicForm --(default sized passed is 30)
+myForm <- generate arbitrary :: IO VariantForm --(default sized passed is 30)
 simplify myForm
 -}

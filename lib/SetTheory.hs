@@ -65,6 +65,9 @@ makeTransitive rel = lfp makeTransOnce rel where
   addRel val = IntSet.unions [rel V.! w | w <- IntSet.toList val] `IntSet.union` val
 
 
+combineRelation :: Relation -> Relation -> Relation
+combineRelation = V.zipWith IntSet.union
+
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
 
 setOneOf :: Set (Gen a) -> Gen a

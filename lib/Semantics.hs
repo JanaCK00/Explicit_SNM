@@ -18,8 +18,7 @@ import qualified Data.List as L (group, sort, nub)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as L
-import SetTheory (Relation, makeTransitive, makeReflexive)
-import Data.Maybe (mapMaybe)
+import SetTheory (Relation, makeTransitive, makeReflexive, combineRelation)
 
 {-
 Semantics defined on Formulas as defined in Syntax.
@@ -85,7 +84,7 @@ updInflBasic :: Double -> SNModel ->SNModel
 updInflBasic tau m@(SNM nrAgents' positions' rel' dual') = m { dual = M.mapWithKey update_per_topic dual' } where
     combinedFriendsGroups | (T 0) `M.member` rel' = L.nub $ V.toList (rel' ! (T 0)) --only for variant infl
                           | otherwise = []
-    update_per_topic t dual_t = IntMap.fromList $ filter (not . null. snd) $ map (\i -> (i, getNewPos i)) [0..(nrAgents'-1)] where
+    update_per_topic t dual_t = IntMap.fromList $ filter (not . null . snd) $ map (\i -> (i, getNewPos i)) [0..(nrAgents'-1)] where
         friendsGroupMap | tau==0    = M.empty --if tau is zero, we don't have to compute anything
                         | (T 0) `M.member` rel' = buildFriendsGroupMap combinedFriendsGroups --it has to be computed for every topic, BUT the L.nub $ V.toList (rel' ! (T 0)) could be avoided to be computed several times
                         | otherwise = buildFriendsGroupMap $ L.nub $ V.toList (rel' ! t)
@@ -189,7 +188,7 @@ access (SM v') (i,j) | i==j      = True
 
 --combines the topic-specific relations to one relation
 combinedTopicsRel :: Int -> M.Map Topic Relation -> Relation
-combinedTopicsRel nragents' = M.foldl' (V.zipWith IntSet.union) (V.replicate nragents' IntSet.empty)
+combinedTopicsRel nragents' = M.foldl' combineRelation (V.replicate nragents' IntSet.empty)
 
     --I might keep this version around for comparison
 updInflVariant :: Double -> SNModel -> SNModel

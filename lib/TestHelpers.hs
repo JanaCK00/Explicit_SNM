@@ -34,12 +34,30 @@ in each Relation every agent to some set of friends (which may be empty)
 fullRel :: SNModel -> Bool
 fullRel (SNM _ positions' rel' _) = M.size rel' == M.size positions'
 
-{-
-check if a given SNModel maps every positions to a set of agents who have adopted it
-(which may be empty)
--}
---fullVal :: SNModel -> Bool
---fullVal (SNM _ positions' _ val') = M.size val' == S.size (allPos positions')
+
+--here to be falsified. checks if the dual always maps every agent
+fullDual :: SNModel -> Bool
+fullDual (SNM nrAgs' _ _ dual') = all (\dual_t -> IntMap.size dual_t == nrAgs') dual'
+
+fullDualBasicInfl :: Double -> SNModel -> Bool
+fullDualBasicInfl tau m = fullDual m' where
+  m' = updInflBasic tau' m
+  tau' = properTau tau
+
+fullDualBasicSelec :: Double -> SNModel -> Bool
+fullDualBasicSelec tau m = fullDual m' where
+  m' = updSelecBasic tau' m
+  tau' = properTau tau
+
+fullDualVariantInfl :: Double -> SNModel -> Bool
+fullDualVariantInfl tau m = fullDual m' where
+  m' = updInflVariant tau' m
+  tau' = properTau tau
+
+fullDualVariantSelec :: Double -> SNModel -> Bool
+fullDualVariantSelec tau m = fullDual m' where
+  m' = updSelecVariant tau' m
+  tau' = properTau tau
 
 --check if the set of agents in non-empty
 nonEmptyAgs :: SNModel -> Bool
@@ -54,6 +72,33 @@ nonEmptyTpcs = not . null . positions
 --check if the set of positions per topic in non-empty
 nonEmptyPos :: SNModel -> Bool
 nonEmptyPos = not . any null . positions
+
+
+--check if the dual doesn't maps an agent to an empty set
+nonEmptyDualmapping :: SNModel -> Bool
+nonEmptyDualmapping m = all noEmptyValue (dual m) where
+  noEmptyValue = IntMap.foldr (\x acc -> x /= S.empty && acc) True
+
+
+nonEmptyDualmappingBasicInfl :: Double -> SNModel -> Bool
+nonEmptyDualmappingBasicInfl tau m = nonEmptyDualmapping m' where
+  tau'= properTau tau
+  m' = updInflBasic tau' m
+
+nonEmptyDualmappingBasicSelec :: Double -> SNModel -> Bool
+nonEmptyDualmappingBasicSelec tau m = nonEmptyDualmapping m' where
+  tau'= properTau tau
+  m' = updSelecBasic tau' m
+
+nonEmptyDualmappingVariantInfl :: Double -> SNModel -> Bool
+nonEmptyDualmappingVariantInfl tau m = nonEmptyDualmapping m' where
+  tau'= properTau tau
+  m' = updInflVariant tau' m
+
+nonEmptyDualmappingVariantSelec :: Double -> SNModel -> Bool
+nonEmptyDualmappingVariantSelec tau m = nonEmptyDualmapping m' where
+  tau'= properTau tau
+  m' = updSelecVariant tau' m
 
 --doesn't make sense if the topic isnt a field in positions
 --check if the positions maps a topic to a set containing only positions of that topic
