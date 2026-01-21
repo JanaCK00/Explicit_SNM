@@ -78,7 +78,7 @@ spec = do
             \snm i1 -> selecMakesRefl (snm::SNModel) (i1::Double)
         prop "Arbitrary SNModel has symmetric relations after selec operation" $ do
             \snm i1 -> selecMakesSym (snm::SNModel) (i1::Double)
-        prop "Dummy to see how many steps until stable" $ do
+        prop "Dummy to see how many steps until stable in an interleavin of Basic Selec and Basic Infl" $ do
             prop_numberOfTurns
         prop "Updates on Example 2 from paper Smets et al (2020) are correctly computed (SelecBasic, InflBasic)" $ do
             exPaperstep1 == updSelecBasic 0.5 exPaperstep0 &&

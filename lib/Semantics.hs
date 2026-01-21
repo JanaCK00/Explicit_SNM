@@ -8,13 +8,11 @@ import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Set (Set)
-import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Matrix as Mat
 import Data.Matrix (Matrix)
 import qualified Data.Vector as V
 import Data.Vector (Vector)
-import qualified Data.List as L (group, sort, nub)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as L
@@ -104,14 +102,15 @@ updInflBasic tau m@(SNM nrAgents' positions' rel' dual') = m { dual = M.mapWithK
                             nr_friends = IntSet.size friends
 
 
---takes a list and return a list of tuples indicating the number of times an element occured in the input
-countOccur :: Ord a => [a] -> [(a, Int)]
-countOccur xs = [(head g, length g) | g <- L.group (L.sort xs)] --return empty list for empty list input
+----takes a list and return a frequency map of indicating the number of times an element occured in the input
+countOccur :: Ord a => [a] -> M.Map a Int
+countOccur = L.foldl' (\cur a -> M.insertWith (+) a 1 cur) M.empty
+
 
 --takes tau, size of friendgroup, concatenated positions of all friends (incl dublicates) and returns the new set of positions that an agent will have
 --if that was their friendgrup
 computePosSet :: Ord a => Double -> Int -> [a] -> Set a
-computePosSet tau nr_friends positionsList = S.fromList . map fst . filter friendsThink $ countOccur positionsList where
+computePosSet tau nr_friends positionsList = S.fromList . map fst . filter friendsThink $ M.toList $ countOccur positionsList where
     friendsThink (_, occur) = fromIntegral occur / fromIntegral nr_friends >= tau
 
 {-
@@ -169,7 +168,7 @@ updSelecBasic tau m@(SNM nrAgents' positions' oldrel dual') = m {rel = M.mapWith
 --TODO ?  keep working on this; construction of vector
 --maybe I can make it from a list ? where I prepend stuff, so I only go through the sizes less? Or shoudl I precompute the sizes as well?
 --ACHTUNG vector is not 1 based!!
-newtype SymMatrix = SM {v :: Vector Bool } --a symmetric matrix, stored as a vector of the lower triangle. (without diagonal, bc. it always holds True)
+newtype SymMatrix = SM {vec :: Vector Bool } --a symmetric matrix, stored as a vector of the lower triangle. (without diagonal, bc. it always holds True)
     deriving (Eq, Ord, Show)
 
 

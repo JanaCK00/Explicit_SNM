@@ -25,8 +25,6 @@ import Test.QuickCheck
   , listOf1
   )
 import Test.QuickCheck.Gen (suchThat)
-import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Vector as V
 import Data.Vector (Vector) --vectors are 0-based!!
 

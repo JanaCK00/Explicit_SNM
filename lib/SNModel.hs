@@ -215,7 +215,7 @@ randomRel nrAgs = do
 randomRelList :: Int -> Int -> Gen [IntSet.IntSet]
 randomRelList _ 0 = return []
 randomRelList nrAgs n = do
-    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1] -- TODO think about restricting `suchThat` (\xs -> length xs <= (nrAgs `div` 10))
+    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]  -- try restrictin (but not like this, it couldn't generate)`suchThat` (\xs -> length xs <= (nrAgs `div` 10))
     rest <- randomRelList nrAgs (n-1)
     return $ thisAgsFriends:rest
 
