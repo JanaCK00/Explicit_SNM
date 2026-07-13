@@ -59,9 +59,9 @@ newtype Position = P Int deriving (Eq, Show, Ord)
 
 --CHANGE default values if neded
 defaultNrAgs, nrTpcs, nrPosTotal :: Int
-defaultNrAgs = 100
-nrTpcs = 5
-nrPosTotal = 20 --number of positions in total, make sure nrPosTotal >= nrTpcs
+defaultNrAgs = 120
+nrTpcs = 2
+nrPosTotal = 6 --number of positions in total, make sure nrPosTotal >= nrTpcs
 
 
 {-
@@ -215,7 +215,7 @@ randomRel nrAgs = do
 randomRelList :: Int -> Int -> Gen [IntSet.IntSet]
 randomRelList _ 0 = return []
 randomRelList nrAgs n = do
-    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]  -- try restrictin (but not like this, it couldn't generate)`suchThat` (\xs -> length xs <= (nrAgs `div` 10))
+    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]  -- TODO two ideas for less dense (averarage degree is now n/2) -> either pick from sublist again (should halve the probability) or restrict to numerical value (like in case study, recursively pick until you reach a number between x and y)try restrictin (but not like this, it couldn't generate)`suchThat` (\xs -> length xs <= (nrAgs `div` 10))
     rest <- randomRelList nrAgs (n-1)
     return $ thisAgsFriends:rest
 
