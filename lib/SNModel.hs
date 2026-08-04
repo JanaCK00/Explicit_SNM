@@ -47,7 +47,7 @@ data SNModel = SNM
  { nrAgents :: Int --agents are referred to by 0 .. (nrAgents - 1)
  , positions :: M.Map Topic (Set Position) --pairwise disjoint sets ACHTUNG TODO : TOPICS CAN NOT INCLUDE (T 0), that's a special case reserved for internal use!
  , rel :: M.Map Topic Relation --the social networks, every topic should be a key
- , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, TODO we are changing this away from each agents being a key (bc no position taken is also quite common)
+ , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, but only agents taking more than 0 positions are keys (bc no position taken is also quite common)
  } deriving (Eq, Show)
 --TODO maybe write a better Show?
 
@@ -165,16 +165,40 @@ exampleStab n = SNM stabAgSize positions' rel' dual'  where
     constructSet i = S.fromList $ map (P . (+1)) $ filter (testBit i) [0..(stabPosSize-1)]
 
 
+
+exampleStab2 :: SNModel
+exampleStab2 = SNM 4 positions' rel' dual' where
+  positions' = M.singleton (T 1) (S.fromList [P 1, P 2, P 3, P 4, P 5, P 6])
+  rel'       = M.singleton (T 1) $ makeEmptyRel 4
+  dual'      = M.singleton (T 1) (IntMap.fromList [(0, S.empty), (1, S.fromList[P 3, P 4, P 5, P 6]), (2, S.fromList[P 1, P 5, P 6]), (3, S.fromList[P 1, P 3, P 4])])
 -- ACHTUNG ! ..
 --TODO make it safe (like break at 100 or something)
+{-
+Runs a function f until stabilization (output == input) and
+returns stabilized output and the number of iterations it took to get there.
+-}
 fixCount :: Eq a => (a -> a) -> a -> (a, Int)
 fixCount f = go 0
   where
-    go k x =
-      let x' = f x
-      in if x' == x
-           then (x, k)
+    go k current =
+      let x' = f current
+      in if x' == current
+           then (current, k)
            else go (k + 1) x'
+
+
+--TODO replace occurance of fixCount with this?
+stabCountSafe :: Eq a => Int -> (a -> a) -> a -> Maybe (a, Int)
+stabCountSafe maxIter f = go 0
+  where
+    go k current
+      | k >= maxIter = Nothing
+      | x' == current = Just (current, k)
+      | otherwise = go (k + 1) x'
+      where
+        x' = f current
+
+
 
 examplePaper :: SNModel
 examplePaper = SNM 4 positions' rel' dual' where
@@ -192,11 +216,15 @@ exampleLogicSection = SNM 4 positions' rel' dual' where
   dual' = M.fromList [(T 1, bDual), (T 2, sDual)]
   bDual = IntMap.fromList [(0, S.fromList[P 1, P 2]), (1, S.singleton(P 2)), (2, S.fromList[P 2, P 3]), (3, S.fromList[P 2,P 3])]
   sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
+
+
+
 {-
 these work with the provided lists of agents/topics/positions, not only with the default :)
 so it can also be used for generating a model based on user input...
 It uses lists instead of sets, bc the sublist function would require list conversion anyway
 -}
+
 
 {-
 Given a list a number agents, generates an arbitrary binary relation.
@@ -278,7 +306,6 @@ randomPosMap ts ps = do
   Generate an arbitrary Social Network model.
     adapted from symbolic-topo-e-models.Explicit.kripkeModels
 -}
-
 instance Arbitrary SNModel where
   arbitrary = do
     --TODO limit some stuff? (not necessary, bc I don't close under reflexivity/transitivity?)

@@ -35,8 +35,11 @@ import Data.Vector (Vector) --vectors are 0-based!!
 
 type Agent = Int
 type AgentSet = IntSet
+
 type Relation = Vector AgentSet --represents a relation where at the i-th index we store the set of agents that are socially connected to agent i. an empty set if none
---assuming zero friends are rare, this gives O(1) access
+--assuming zero friends are rare, this gives O(1) access (adjacency set)
+
+
 
 --Given a Relation, make it reflexive.
 makeReflexive :: Relation -> Relation

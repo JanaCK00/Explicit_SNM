@@ -155,6 +155,14 @@ Properties:
  - in general does not depend on current relation
 -}
 --translates the computed symmetric adjacency matrix into the adjacency set representation
+--TODO write a separate translation function for this!
+
+{-
+Performs Basic Friendship Selection Update
+Input: Threshold, SNM
+
+Edge Case: For Threshold = 0, all nodes become friends with all other nodes.
+-}
 updSelecBasic::  Double -> SNModel -> SNModel
 updSelecBasic 0 m = makeFullRelModel m
 updSelecBasic tau m@(SNM nrAgents' positions' oldrel dual') = m {rel = M.mapWithKey update_per_topic oldrel } where
