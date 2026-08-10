@@ -1,7 +1,7 @@
 module ExplicitSpec where
 
 --TODO only do necessary imports
-import Test.Hspec (describe, it, shouldBe, Spec)
+import Test.Hspec (describe, Spec)
 import Test.Hspec.QuickCheck (prop)
 
 import SNModel

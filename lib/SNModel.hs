@@ -7,7 +7,7 @@ import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , sublistOf  )
-import Test.QuickCheck.Gen (chooseInt, suchThat)
+import Test.QuickCheck.Gen (chooseInt)
 import qualified Data.Map.Strict as M
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
@@ -63,6 +63,45 @@ defaultNrAgs = 120
 nrTpcs = 2
 nrPosTotal = 6 --number of positions in total, make sure nrPosTotal >= nrTpcs
 
+
+{-
+Input: SNModel
+Output: Valuation corresponding to the dual
+-}
+val :: SNModel -> M.Map Topic (M.Map Position IntSet.IntSet)
+val snm = M.fromList [(t, val_t snm t)| t <- topics] where
+  topics = M.keys $ positions snm
+
+{-
+Input: SNModel, Topic
+Output: Valuation for the given Topic
+-}
+
+--TODO test
+--TODO I think positions that aren't taken by anyone won't be in the map at all
+val_t :: SNModel -> Topic -> M.Map Position IntSet.IntSet
+val_t snm t =  M.fromListWith IntSet.union
+    [ (p, IntSet.singleton i)
+    | (i, ps) <- dual_t_list
+    , p <- S.toList ps
+    ] where
+  dual_t = dual snm M.! t
+  dual_t_list =  IntMap.toList dual_t
+
+
+--TODO test
+{-
+Input: Valuation for a specific topic.
+Output: Corresponding dual for that topic.
+Agents that don't hold any position of that topic don't appear in the map.
+-}
+valToDual_t :: M.Map Position IntSet.IntSet -> IntMap (Set Position)
+valToDual_t val_t' = IntMap.fromListWith S.union
+    [ (i, S.singleton p)
+    | (p, is) <- val_t_list
+    , i <- IntSet.toList is
+    ] where
+  val_t_list = M.toList val_t'
 
 {-
 some hardcoded examples
@@ -170,7 +209,7 @@ exampleStab2 :: SNModel
 exampleStab2 = SNM 4 positions' rel' dual' where
   positions' = M.singleton (T 1) (S.fromList [P 1, P 2, P 3, P 4, P 5, P 6])
   rel'       = M.singleton (T 1) $ makeEmptyRel 4
-  dual'      = M.singleton (T 1) (IntMap.fromList [(0, S.empty), (1, S.fromList[P 3, P 4, P 5, P 6]), (2, S.fromList[P 1, P 5, P 6]), (3, S.fromList[P 1, P 3, P 4])])
+  dual'      = M.singleton (T 1) (IntMap.fromList [(0, S.empty), (1, S.fromList [P 3, P 4, P 5, P 6]), (2, S.fromList [P 1, P 5, P 6]), (3, S.fromList [P 1, P 3, P 4])])
 -- ACHTUNG ! ..
 --TODO make it safe (like break at 100 or something)
 {-
@@ -188,12 +227,12 @@ fixCount f = go 0
 
 
 --TODO replace occurance of fixCount with this?
-stabCountSafe :: Eq a => Int -> (a -> a) -> a -> Maybe (a, Int)
+stabCountSafe :: Eq a => Int -> (a -> a) -> a -> (a, Maybe Int)
 stabCountSafe maxIter f = go 0
   where
     go k current
-      | k >= maxIter = Nothing
-      | x' == current = Just (current, k)
+      | k >= maxIter = (current, Nothing)
+      | x' == current = (current, Just k)
       | otherwise = go (k + 1) x'
       where
         x' = f current
@@ -205,16 +244,16 @@ examplePaper = SNM 4 positions' rel' dual' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
   rel' = M.fromList $ zip (map T [1,2,3]) $ replicate 3 (makeEmptyRel 4)
   dual' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList[P 2, P 3, P 4]), (1, S.singleton(P 2)), (2, S.fromList[P 1, P 3, P 4]), (3, S.fromList[P 3,P 4])]
+  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.singleton (P 2)), (2, S.fromList [P 1, P 3, P 4]), (3, S.fromList [P 3,P 4])]
   mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList[P 9, P 10, P 11, P 12]), (1, S.singleton(P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList[P 9, P 10])]
+  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList [P 9, P 10])]
 
 exampleLogicSection :: SNModel
 exampleLogicSection = SNM 4 positions' rel' dual' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
   rel' = M.fromList [(T 1, V.fromList [a, a, ad, a]), (T 2, V.fromList [a, b, c, d])]
   dual' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList[P 1, P 2]), (1, S.singleton(P 2)), (2, S.fromList[P 2, P 3]), (3, S.fromList[P 2,P 3])]
+  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.singleton (P 2)), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 2,P 3])]
   sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
 
 
@@ -345,7 +384,6 @@ makeSymModel m@(SNM _ _ rel' _) = m {rel = M.map makeSymmetric rel'}
 --takes a SNModel and makes all its relations transitive
 makeTransModel :: SNModel -> SNModel
 makeTransModel m@(SNM _ _ rel' _) = m {rel = M.map makeTransitive rel'}
-
 
 
 {-

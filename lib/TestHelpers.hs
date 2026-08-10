@@ -196,9 +196,10 @@ prop_trivialFormVariant f =
     property True
 
 --count how many steps until stable
+--TODO does this work with the maybe returned in steps?
 prop_numberOfTurns :: Double -> SNModel -> Property
 prop_numberOfTurns tau m =
-    let steps = snd $ fixCount ((updInflBasic tau'). (updSelecBasic tau')) m
+    let steps = snd $ stabCountSafe 100 ((updInflBasic tau'). (updSelecBasic tau')) m
         tau' = properTau tau in
         collect steps $
         property True
@@ -471,3 +472,6 @@ exOwnstep4 = SNM 4 positions' rel' dual' where
 
 
 --TODO add testing for semantics apart from the updates!!! some
+--TOOD add testing for case study
+
+

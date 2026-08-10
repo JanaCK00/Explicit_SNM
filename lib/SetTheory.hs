@@ -65,9 +65,29 @@ makeTransitive rel = lfp makeTransOnce rel where
   makeTransOnce = V.map addRel
   addRel val = IntSet.unions [rel V.! w | w <- IntSet.toList val] `IntSet.union` val
 
-
 combineRelation :: Relation -> Relation -> Relation
 combineRelation = V.zipWith IntSet.union
+
+{-
+Given a relation, check if it is symmetric.
+-}
+isSym :: Relation -> Bool
+isSym rel = rel == makeSymmetric rel
+
+
+{-
+Given a relation, check if it is reflexive.
+-}
+isRefl :: Relation -> Bool
+isRefl = V.ifoldl' (\acc i friends -> acc && IntSet.member i friends) True
+
+
+{-
+Given a relation, check if there are no self-loops.
+-}
+noSelfLoops :: Relation -> Bool
+noSelfLoops = V.ifoldl' (\acc i friends -> acc && IntSet.notMember i friends) True
+
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
 
