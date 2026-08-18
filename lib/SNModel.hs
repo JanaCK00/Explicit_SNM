@@ -2,7 +2,6 @@
 
 module SNModel where
 
---TODO only necessary imports
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
@@ -12,7 +11,7 @@ import qualified Data.Map.Strict as M
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Set as S -- Set is strict ;)
---import Data.Map.Strict ((!))
+
 import Data.Set (Set)
 import qualified Data.IntSet as IntSet
 import SetTheory
@@ -42,6 +41,8 @@ Assumptions on the form of SNM: (that aren't enforced here, but should be checke
 (3) The maps contain every topic of the model as a key. Dual_t only contains agents as keys who have non-empty set of positions in that topic
 -}
 
+--no friends is very rare -> vector
+--no position is NOT rare -> Map
 
 data SNModel = SNM
  { nrAgents :: Int --agents are referred to by 0 .. (nrAgents - 1)
@@ -50,6 +51,9 @@ data SNModel = SNM
  , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, but only agents taking more than 0 positions are keys (bc no position taken is also quite common)
  } deriving (Eq, Show)
 --TODO maybe write a better Show?
+
+
+
 
 --See definitions for Agent/Relation in SetTheory.hs
 

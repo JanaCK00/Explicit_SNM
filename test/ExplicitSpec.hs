@@ -66,13 +66,13 @@ spec = do
 
 
     describe "Testing propoerties of basic update operations" $ do
-        prop "Basic Infl operation leaves relations of arbitrary SNModel unchanged" $ do
+        prop "Infl Basic leaves relations of arbitrary SNModel unchanged" $ do
             \snm i1 -> inflNotChangeRel (i1::Double) (snm::SNModel)
-        prop "Basic Selec operation leaves positions of agents of arbitrary SNModel unchanged" $ do
+        prop "Selec Basic leaves positions of agents of arbitrary SNModel unchanged" $ do
             \snm i1 -> selecNotChangeDual (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
             \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::Double) (i2::Double)
-        prop "Arbitrary SNModel doesn't change with Infl after a Selec 1 (except for Infl 0)" $ do
+        prop "Arbitrary SNModel doesn't change with Infl Basic after a Selec Basic 1 (except for Infl 0)" $ do
             \snm i1 -> consInflSelecOne  (snm::SNModel) (i1::Double)
         prop "Arbitrary SNModel has reflexive relations after a selec operation" $ do
             \snm i1 -> selecMakesRefl (snm::SNModel) (i1::Double)
@@ -90,11 +90,11 @@ spec = do
 
 
     describe "Testing properties of combined variant update operations" $ do
-        prop "Arbitrary SNModel isn't affected by SelecVar tau1 if a SelecVar tau2 is applied after (with tau2>=tau1)" $ do
+        prop "Arbitrary SNModel isn't affected by Selec Variant tau1 if a Selec Varient tau2 is applied after (with tau2>=tau1)" $ do
             \snm i1 i2 -> variantSelecGrowingTau (i1::Double) (i2::Double)  (snm::SNModel)
-        prop "Variant Infl operation leaves relations of arbitrary SNModel unchanged" $ do
+        prop "Infl Variant leaves relations of arbitrary SNModel unchanged" $ do
             \snm i1 -> inflVarNotChangeRel (i1::Double) (snm::SNModel)
-        prop "Variant Selec operation leaves positions of agents of arbitrary SNModel unchanged" $ do
+        prop "Selec Variant leaves positions of agents of arbitrary SNModel unchanged" $ do
             \snm i1 -> selecVarNotChangeDual (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel has reflexive relations after a variant selec operation" $ do
             \snm i1 -> selecMakesReflVariant (snm::SNModel) (i1::Double)
@@ -124,30 +124,22 @@ spec = do
 -}
 
 
+
+{-
+SECTION: Syntax
+-}
     describe "Testing the simplify function" $ do
-        prop "Arbitrary BasicForm evaluates to the same as its simplified version on Arbitrary SNModel" $ do
-            \snm f -> simplifyWorksBasic (snm::SNModel) (f::BasicForm)
-        prop "Arbitrary VariantForm evaluates to the same as its simplified version on Arbirtary SNModel" $ do
-            \snm f -> simplifyWorksVariant (snm::SNModel) (f::VariantForm)
+        prop "Arbitrary Form evaluates to the same as its simplified version on Arbitrary SNModel" $ do
+            \snm f -> simplifyWorks (snm::SNModel) (f::Form)
 
 
-    describe "Tests for BasicForm generation" $ do
+    describe "Tests for Form generation" $ do
         prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
-            \f -> not $ containsEmptyBasic (f::BasicForm)
+            \f -> not $ containsEmpty (f::Form)
         prop "Dummy to see what percentage of generated Forms simpifies to Top or Bot" $ do
-            prop_trivialFormBasic
+            \f -> prop_trivialForm (f::Form)
         prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
-            \f -> topBotpurityBasic (f::BasicForm)
-        prop "Testing if every BasicForm is mode consistent" $ do
-            \f -> modeConsistentBas (f::BasicForm)
-
-    describe "Tests for VariantForm generation" $ do
-        prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
-            \f -> not $ containsEmptyVariant (f::VariantForm)
-        prop "Dummy to see what percentage of generated Forms simpifies to Top or Bot" $ do
-            prop_trivialFormVariant
-        prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
-            \f -> topBotpurityVariant (f::VariantForm)
-        prop "Testing if every VariantForm is mode consistent" $ do
-            \f -> modeConsistentVar (f::VariantForm)
+            \f -> topBotpurity (f::Form)
+        prop "Testing if every Form is mode consistent" $ do
+            \f -> checkModeConsistent (f::Form)
 

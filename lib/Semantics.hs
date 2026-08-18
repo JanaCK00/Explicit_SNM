@@ -2,7 +2,7 @@ module Semantics where
 
 
 --TODO only necessary imports
-import Syntax ( Form(..), Mode(..))
+import Syntax ( Form(..), Mode(..), checkModeConsistent, simplify)
 import SNModel ( SNModel(rel, dual, SNM), Position, makeFullRelModel, Topic(..))
 import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
@@ -17,6 +17,31 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as L
 import SetTheory (Relation, makeTransitive, makeReflexive, combineRelation)
+
+
+{-
+TODO test
+"Exposed" model checker function
+
+Input:
+SNModel snm
+Form f
+
+Output:
+Checks if the Form is in-update mode consistent.
+Checks if the SNModel is valid.
+
+    TODO
+Checks if agents, topics and positions appearing in Form also appear in SNModel
+
+
+    If so, simplifies f and checks if f holds on snm.
+-}
+check :: SNModel -> Form -> Bool
+check snm f | not (checkModeConsistent f) = error "Formula is not in-operator mode-consistent."
+            -- | not (isValidSNModel snm)    = error "Social Networks Model is not valid."
+            -- | not matchApp                = error "Formula contains Agents or Positions that aren't present in the Social Networks Model."
+            | otherwise                   = snm |= simplify f
 
 {-
 Semantics defined on Formulas as defined in Syntax.

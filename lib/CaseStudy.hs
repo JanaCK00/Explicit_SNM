@@ -5,11 +5,11 @@ import SNModel
       val_t,
       Position(..),
       SNModel(SNM, rel, nrAgents, dual),
-      Topic(..) )
+      Topic(..), valToDual_t, makeEmptyRel )
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
-  , elements, generate)
+  , elements, generate, sublistOf, chooseInt)
 import Test.QuickCheck.Gen (genDouble)
 import SetTheory (Agent, Relation)
 import Data.Set (Set)
@@ -19,23 +19,18 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
---import qualified Data.Vector.Mutable as MV
 import qualified Data.List as L
 import Data.Ord (Down(..))
-import Data.Tuple (swap)
 import Semantics
 
 import Control.Monad (replicateM, forM) --for experiment
 import Text.Printf --to print results of experiment
+import Debug.Trace (trace)
+import Data.Maybe (isNothing)
 
 import Syntax (Mode (Basic, Variant))
 
 
-
-newtype SNMCase = SNMCase SNModel deriving (Eq, Show)
-
---Question: do it with quickcheck, combine all test parameters into one counting thing to have it run on the same test cases
---genereate model, run until stable (if not stable after fixed nr of turn, stop), check proportion of public who hold climate positions
 
 {-
 Define necessary Topics, Positions, Maps and Sets of Positions for the case study.
@@ -43,24 +38,23 @@ Define necessary Topics, Positions, Maps and Sets of Positions for the case stud
 flight :: Topic
 flight = T 3
 
-ballot, flightNorm :: Position
+ballot, flightNorm, thirdOne, fourthOne :: Position
 ballot = P 5
 flightNorm = P 6
+thirdOne = P 7
+fourthOne = P 8
 
 posMapFlight :: M.Map Topic (Set Position)
-posMapFlight = M.singleton flight (S.fromList [ballot, flightNorm])
-
-ba, baf :: Set Position
-ba = S.singleton ballot
-baf = S.fromList [ballot, flightNorm]
+posMapFlight = M.singleton flight (S.fromList [ballot, flightNorm, thirdOne])
 
 
 {-
 Define proportion of distribution of position ballot in initial network.
 58% percent of nodes will hold position ballot initially.
+The number is taken from literature.
 -}
 propoBallot :: Double
-propoBallot = 0.58
+propoBallot = 0.58 --TODO have this as a variable
 
 {-
 Compute the absolute number of nodes who will hold the position ballot initially, according to the proportion.
@@ -69,44 +63,45 @@ nrBallot :: Int
 nrBallot = computeProportion propoBallot totalNrAgs
 
 {-
-Computes the integer number corresponding to a given proportion of a total (rounded down)
+Input:
+0<=p<=1 proportion
+n
+
+Computes the integer number corresponding to a given proportion of a total (rounded down).
 -}
-computeProportion :: (RealFrac a1, Integral b, Integral a2) => a1 -> a2 -> b
-computeProportion propo ags = floor (propo * fromIntegral ags)
+computeProportion :: (RealFrac a, Integral b, Integral c) => a -> c -> b
+computeProportion p n = floor (p * fromIntegral n + 1e-9)
 
 --define necessary parameters
 --CHANGE if needed
-publicNrAgs, leadersNrAgs, totalNrAgs, m0Param, mParam, nParam, aParam  :: Int
+totalNrAgs, m0Param, mParam, nParam, aParam  :: Int
 threshold, pTParam :: Double
---Define fixed parameters
+
+
 totalNrAgs = 120    --number of agents in the generated networks
-leadersNrAgs = 20     --TODO incoporate as a variable -> whereever it shows up, replace it with a parameter
-publicNrAgs = totalNrAgs - leadersNrAgs --TODO incorporate as a variable
-threshold = 0.5
+threshold = 0.5     --fixed threshold applied throughout the case study
 
 {-
-Fixed parameters for network generation (Holme-Kim)
+Define fixed parameters for Holme-Kim network generation.
 -}
-nParam = totalNrAgs --number of nodes in final network generated
+nParam = totalNrAgs --number of nodes in generated network
 mParam = 3          --number of edges added per node in network generation
 m0Param = 3         --size of starting network in generation
-pTParam = 0.8       --probability of a TF step
+pTParam = 0.5       --probability of a TF step.
 aParam = 1          --initial attractiveness
+--The average number of TF trials per added node is m_t = (m-1) * p_t. For m=3, this means m_t = 2 * p_t.
 
 --TODO find good starting value
 --decides the number of randomly chosen starting nodes for nomination strategy
 indexSize :: Int
 indexSize = 10
 
-allAgs :: [Agent]
-allAgs = [0..totalNrAgs-1]
 
 
 
 {-
-Constructs a fully connected network of a given size. (no self-loops)
+Constructs a fully connected network of a given size (no self-loops).
 -}
-
 initialCore :: Int -> [[Int]]
 initialCore m_0 = initialCoreRec 0 where
     initialCoreRec  step | m_0 == step = []
@@ -115,6 +110,11 @@ initialCore m_0 = initialCoreRec 0 where
 
 
 --TODO: write tests
+--zb number of edges
+--number of nodes
+--auch gutes Zeichen: average degree macht sinn
+--vlt auch noch clustering degree berechnen?x
+--ist es symmetrisch?
 
 {-
 Generates a Holme-Kim relation
@@ -277,12 +277,24 @@ insertAt v w (x:xs) = x : insertAt (v - 1) w xs
 
 
 {-
-Takes an adjacency list and translates it into a Relation (adjencecy set)
+Takes an adjacency list and translates it into a Relation (adjacency set)
 -}
 translate :: [[Int]] -> Relation
 translate xs = V.fromList $  L.map IntSet.fromList xs
 
 
+{-
+Input:
+lmin - lmax: range of length of returned list
+
+Output:
+randomly chooses a length in the given range and returns a random sublist of the chosen length
+-}
+
+sublistOfLength :: Ord a => Int -> Int -> [a] -> Gen [a]
+sublistOfLength lmin lmax xs = do
+    thisL <- chooseInt (lmin,lmax)
+    sublistRec thisL xs
 
 {-
 Input:
@@ -301,7 +313,25 @@ sublistRec l xs = do
                 return $ el:rest
 
 
+{-
+Define a wrapper type to allow arbitrary generation of SNMs that fulfill the defined
+properties for the case study.
 
+Additionally allows to store the majority opinion combination.
+-}
+
+data SNMCase = SNMCase
+    { model :: SNModel
+    , popularPos :: Set Position  --stores the popular opinion combination
+    } deriving (Eq, Show)
+
+
+{-
+TODO delete if unnecessary, used for testing
+unwraps the newtype SNMCase
+-}
+unwrap :: SNMCase -> SNModel
+unwrap (SNMCase snm _) = snm
 
 
 {-
@@ -312,19 +342,26 @@ instance Arbitrary SNMCase where
     arbitrary = do
         flightRel <- holmeKim nParam mParam m0Param pTParam aParam
         let rel' = M.singleton flight flightRel
-        takeBallot <- sublistRec nrBallot allAgs
-        let dual' = M.singleton flight $ IntMap.fromList $ zip takeBallot (repeat ba)
-        return $ SNMCase (SNM totalNrAgs posMapFlight rel' dual')
+            ags = [0..totalNrAgs-1]
+        takeBallot <- IntSet.fromList <$> sublistRec 60 ags
+        takeThirdOne <- IntSet.fromList <$> sublistRec 120 ags --TODO tweaking here
+        --takeFourthOne <- IntSet.fromList <$> sublistRec 70 ags
+        let popular = S.empty--TODO continue here to get out the majority
+        let val_t' = M.fromList [(ballot, takeBallot), (thirdOne, takeThirdOne)]
+        let dual' = M.singleton flight $ valToDual_t val_t'
+        return $ SNMCase (SNM totalNrAgs posMapFlight rel' dual') popular
 
 
 getSNMCase :: Gen SNMCase
 getSNMCase = arbitrary
 
+
+
 {-
 Input: SNmodel, Topic
 Output: Returns a list of tuples. Each tuple says which fraction of agents in the network hold that position.
 Positions that aren't held by any node don't appear in the result.
-The output list will be sorted in ascending order of Position (M.toList return it this way).
+The output list will be sorted in ascending order of Position (M.toList returs it this way).
 -}
 posDistribution_t :: SNModel -> Topic  -> M.Map Position Double
 posDistribution_t snm t =  M.map (\s -> fromIntegral (IntSet.size s) / fromIntegral nrAgs) val_t' where
@@ -352,25 +389,6 @@ interleave Variant Basic    = stabCountSafe 20 (updSelecVariant threshold . updI
 interleave Variant Variant  = stabCountSafe 20 (updSelecVariant threshold . updInflVariant threshold)
 
 
-
-{-
-NEW EXPERIMENT
--}
-
-runExperiment :: Mode -> Mode -> SNMCase -> [Int] -> IO()
-runExperiment selecMode inflMode (SNMCase snm) leaders' = do
-    let (initAvgPublic, initAvgleaders) = averageDegrees (rel snm M.! flight) leaders'
-        (finalModel, steps) = interleave selecMode inflMode snm
-        posDis = posDistribution_t finalModel flight
-        (finalAvgPublic, finalAvgleaders) = averageDegrees (rel finalModel M.! flight) leaders'
-    putStr $ "You ran " ++ show selecMode ++ "Selec on " ++ show inflMode ++ "Infl. \n The starting Model has " ++ show leadersNrAgs ++ " leader nodes and " ++ show publicNrAgs ++
-                " Public nodes. \n Following initial average degrees: \n Average Degree of Public nodes: " ++ show initAvgPublic ++
-                "\n Average Degree leader Nodes: " ++ show initAvgleaders  ++ "\n The experiment stabilized after " ++
-                show steps ++ " steps. \n Following final average degrees: \n Average Degree Public nodes: " ++ show finalAvgPublic ++
-                "\n Average Degree leaders nodes: " ++ show finalAvgleaders++
-                "\n The positions distribution in the final model is as follows. " ++ show posDis ++ "\n"
-
-
 {-
 Input:
 Relation
@@ -392,51 +410,38 @@ averageDegrees rel' leaders'= (avgPublic', avgLeaders') where
     nrleaders = length leaders'
     nrPublic = V.length rel' - nrleaders
     avgPublic' | nrPublic == 0 = 0
-              | otherwise     = fromIntegral publicDegree / fromIntegral nrPublic
+               | otherwise     = fromIntegral publicDegree / fromIntegral nrPublic
     avgLeaders' = fromIntegral leadersDegree / fromIntegral nrleaders
 
 
 
 
---TODO keep working here
-
-
-
 {-
-Data type for the three identification strategy for leaders:
+Data type for the identification strategies for leaders:
 
-KRich: Highest degree nodes in the network. Corresponds to celebrity strategy.
+KRich: Highest degree nodes in the network. Corresponds to celebrity strategy. OR the full mapping?
 Random: Randomly chosen nodes. Corresponds to volunteer strategy.
-Reco: Randomly chose nodes, which then recommend the highest degree node in their neighboorhood. Corresponds to snowball strategy.
+Nomination: Randomly choose nodes, which then recommend the highest degree node in their neighboorhood.(global knowledge) Corresponds to snowball strategy.
+LocalNom: All nodes recommend their most locally embedded node, then we choose the most nominated ones --TODO keep working on these, also have it with smaller sample size, and for the case that we don't find enough on level 1
 -}
-data Strategy = Random | KRich | Nomination deriving (Show, Eq, Ord)
+data Strategy = Random | KRich deriving (Show, Eq, Ord) --UNCOMMENT HERE for the identification strategies: | Nomination | LocalNom
 
 
 {-
 Input:
-Leader strategyification strategy
-Number of Leaders
+Leader identification strategy
+Number of Leaders to identify
 Relation
 
 Output:
-Generated tuple of (List of non-leaders, List of Leaders) --TODO vlt brauche ich die non-leaders gar nicht
+List of leaders
 
 --TODO test all helper functions, and this one
 -}
-getLeaders :: Strategy -> Int -> Relation -> Gen ([Int], [Int])
+getLeaders :: Strategy -> Int -> Relation -> Gen [Int]
 getLeaders KRich nrLeaders rel' = return $ findKrich nrLeaders rel'
 getLeaders Random nrLeaders rel' = do
-    let ags = [0..V.length rel'-1]
-    leaders <- sublistRec nrLeaders ags
-    let nonLeaders = IntSet.toList $ IntSet.difference (IntSet.fromList ags) (IntSet.fromList leaders)
-    return (nonLeaders, leaders)
-getLeaders Nomination nrLeaders rel' = do
-    let agsSet = IntSet.fromList [0..V.length rel'-1]
-    leaders <- nomination nrLeaders indexSize rel'
-    let nonLeaders = IntSet.toList $ IntSet.difference agsSet (IntSet.fromList leaders)
-    return (nonLeaders, leaders)
-
-
+    sublistRec nrLeaders [0..V.length rel'-1]
 
 {-
 Input
@@ -452,8 +457,8 @@ TODO maybe I have to change this?
 TODO test
 -}
 
-findKrich :: Int -> Relation -> ([Int], [Int])
-findKrich k rel' = swap $ splitAt k $ map fst $ degreeListDesc rel'
+findKrich :: Int -> Relation -> [Int]
+findKrich k rel' = take k $ map fst $ degreeListDesc rel'
 
 
 {-
@@ -467,75 +472,15 @@ degreeListDesc :: Relation -> [(Int, Int)]
 degreeListDesc = L.sortOn (Down . snd) . V.toList . V.imap (\i ags -> (i, IntSet.size ags))
 
 
---TODO debug: the level thing doesn't guaruantee we find all nodes as nominees -> fix this
-{-
-Input:
-l: Level of nomination:
-    for l=1, each agents nominates the highest degree node
-    for l=2, each agents nominates the second highest degree node
-    ...
-
-List of nominators (agents who nominate)
-Relation
-Precomputed degreeList corresponding to the relation
-
-Output:
-IntMap showing for an entry (v, n), that the node v was nominated n times.
-
--}
-getNomiMap :: Int -> [Int]  -> Relation -> [(Int, Int)] -> IntMap Int
-getNomiMap _ [] _ _ = IntMap.empty
-getNomiMap l (x:ags) rel' degrees | nrFriends >= l = IntMap.insertWith (+) nomi 1 rest
-                                  | otherwise    = rest --if agent doesn't have anymore friends to nominate at level l
- where rest = getNomiMap l ags rel' degrees
-       friends = rel' V.! x
-       nrFriends = IntSet.size friends
-       nomi = fst $ filter ((`IntSet.member` friends) . fst) degrees !! (l-1) --get nomination of agent a at level l
-
-
-
 
 {-
-Input:
-Number of leaders to identify (<= number of agents in the network)
-Size of index set (<= number of agents in the network)
-Relation
+TODO working on new idea
 
-Output:
-Generated leaders using nomination strategy.
+Popular: opinion leaders take up the popular existing norm
+Authentic: opinion leaders stick to their initial stance in the existinc norm
 -}
-nomination :: Int -> Int -> Relation -> Gen [Int]
-nomination n i rel' = do
-    let ags = [0..(V.length rel' - 1)]
-    indexCases <- sublistRec i ags
-    let degrees = degreeListDesc  rel'
-    return $ nomiRec n rel' indexCases indexCases indexCases IntMap.empty degrees 1
 
-
-{-
-Input:
-number of leaders to identify
-Relation
-list of indexset (original nominators)
-list of current nominators
-running list of nominators
-running nomination map (keys are agents, value is number of times they have been nominated)
-Precomputed degreeList corresponding to the relation
-level of nomination
-
-Output:
-final list of leaders
--}
-nomiRec ::  Int -> Relation -> [Int] -> [Int] -> [Int] -> IntMap Int -> [(Int, Int)] -> Int -> [Int]
-nomiRec n rel' indexCases curNom nom nomMap degrees l | enough    = take n $ map fst $ L.sortOn (Down . snd) $ IntMap.toList newNomMap --if enough nominees have been found, take the n most nominated ones
-                                                      | lfull     = nomiRec n rel' indexCases newNom [] newNomMap degrees (l+1)  --if all agents have already proveded a nomination, we increase the level of nomination
-                                                      | otherwise = nomiRec n rel' indexCases newCurNom newNom newNomMap degrees l
-    where lfull = null newCurNom
-          enough = IntMap.size newNomMap >= n
-          newNomMap = IntMap.unionWith (+) nomMap nextNoms
-          nextNoms = getNomiMap l curNom rel' degrees
-          newCurNom = IntMap.keys nextNoms L.\\ nom --all that haven't already nominated someone
-          newNom = newCurNom ++ nom --add these new nominators to the running list of nominators
+data PopularStrat = Popular | Authentic deriving (Show, Eq, Ord)
 
 
 {-
@@ -546,11 +491,11 @@ Number of agents -> 120
 parameters of holme kim -> as defined above
 Threshold -> 0.5
 InflMode -> Basic
-SelecMode -> Variant
+SelecMode -> Basic?
 
 Input:
-Number of models to generate
-list of k's to test
+n: Number of models to generate
+ks: list of k's to test
 
 will generate the models, then generate the leaders using the three strategies
 will save for each k the percentage of successes in each of the three strategies
@@ -559,15 +504,17 @@ will save for each k the percentage of successes in each of the three strategies
 
 ACHTUNG ._.
 -}
-experiment :: Int -> [Int] -> Gen [(Int, Strategy, Results)]
-experiment n ks = do
-    models <- replicateM n getSNMCase
+experimentHolme :: Int -> [Int] -> Gen [(Int, PopularStrat, Results)]
+experimentHolme n ks = do
+    caseModels <- replicateM n getSNMCase
+    let models = map unwrap caseModels --TODO here das einbauchen mit der popular opinion combo
     allResults <- forM models $ \rel' ->
         forM ks $ \k ->
-            forM [Random, KRich, Nomination] $ \strategy -> do
-                resultOne <- runOneGen strategy k rel'
-                pure (k, strategy, resultOne)
+            forM [Popular, Authentic] $ \popularStrat -> do --todo habe hier Nomination und LocalNom rausgenommen
+                resultOne <- runOneGen popularStrat k rel'
+                pure (k, popularStrat, resultOne)
     return $ aggregate ks (concat $ concat allResults)
+
 
 {-
 Input:
@@ -577,11 +524,11 @@ List of experiment results inlcuding k and Strategy.
 Output:
 Aggregates the results by k and Strategy, to display average values across the generated models.
 -}
-aggregate :: [Int]  -> [(Int, Strategy, Results)] -> [(Int, Strategy, Results)]
+aggregate :: [Int]  -> [(Int, PopularStrat, Results)] -> [(Int, PopularStrat, Results)]
 aggregate ks listOfResults =
     [ (k, s, averageResult [x | (k', s', x) <- listOfResults, k == k', s == s'])
     | k <- ks
-    , s <- [Random, KRich, Nomination]
+    , s <- [Popular, Authentic]--TODO habe hier Nomination und LocalNom rausgenommen
     ]
 
 {-
@@ -595,7 +542,7 @@ Calculates average of Results.
 averageResult :: [Results] -> Results
 averageResult xs = addedUp `divideInt` length xs where
     addedUp = sumResults xs
-    divideInt (Results p l s r) i = Results (fI p i) (fI l i) (fIM s i) (M.map (`fI` i) r) where
+    divideInt (Results p l s r adop rejec partialSucc) i = Results (fI p i) (fI l i) (fIM s i) (M.map (`fI` i) r) (fI adop i) (fI rejec i) (fI partialSucc i) where
         fI x y = x / fromIntegral y
         fIM Nothing _ = Nothing
         fIM (Just x) y = Just (x / fromIntegral y)
@@ -606,18 +553,22 @@ Output: implements sum for [Results]
 -}
 sumResults :: [Results] -> Results
 sumResults = L.foldl' addResults zeroResults where
-    zeroResults = Results 0 0 (Just 0) M.empty --TODO check if it works with [] as last argument, sonst rausholen
-    addResults (Results a1 b1 c1 d1) (Results a2 b2 c2 d2) = Results (a1+a2) (b1+b2) ((+) <$> c1 <*> c2) (M.unionWith (+) d1 d2)
+    zeroResults = Results 0 0 (Just 0) M.empty 0 0 0--TODO check if it works with [] as last argument, sonst rausholen
+    addResults (Results a1 b1 c1 d1 e1 f1 g1) (Results a2 b2 c2 d2 e2 f2 g2) = Results (a1+a2) (b1+b2) ((+) <$> c1 <*> c2) (M.unionWith (+) d1 d2) (e1+e2) (f1+f2) (g1+g2)
+
 {-
-Data type to store results of single run of experiment.
+Data type to store results of experiment. Usually a single run of experiment, but can also be used to store an average.
 TODO can be extended if necessary
 -}
 data Results = Results
-    { avgPublic   :: Double                --Initial average degree of non-leader nodes
-    , avgLeaders  :: Double                --Initial average degree of leader nodes
-    , stab        :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
-    , adoptRatios :: M.Map Position Double --Ratio of nodes who hold each position.
-    }
+    { avgPublic     :: Double                --Initial average degree of non-leader nodes
+    , avgLeaders    :: Double                --Initial average degree of leader nodes
+    , stab          :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
+    , adoptRatios   :: M.Map Position Double --Ratio of nodes who hold each position.
+    , fullyAdopted  :: Double                --Number of times all agents adopted the new position in the final model.
+    , fullyRejected :: Double                 --Number of times no agents adopted the new position in the final model.
+    , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model (--TODO gute Zahl hier finden)
+    } deriving (Show)
 
 {-
 Input:
@@ -629,46 +580,55 @@ Output:
 Identifies k leaders according to strategy, runs the experiment and return the results.
 
 -}
-runOneGen :: Strategy -> Int -> SNMCase -> Gen Results
-runOneGen strat k m@(SNMCase snm) = do
-    leaders <- snd <$> getLeaders strat k (rel snm M.! flight)
-    return $ runOne leaders m
+runOneGen :: PopularStrat -> Int -> SNModel -> Gen Results
+runOneGen popStrat k snm = do
+    leaders <- getLeaders KRich k (rel snm M.! flight) --TODO habe hier KRich statt der Input Strategie reingetan
+    return $ runOne popStrat leaders snm
 
 
 
 {-
 Input:
+Popularty Strategy
 List of leaders (0 < length <= nr of Agents)
 SNMCase
 
 Output:
 Intervenes on positions of leaders, runs interleaving and returns results.
 -}
-runOne :: [Int] -> SNMCase -> Results
-runOne leaders (SNMCase snm) = Results avgPublic' avgLeaders' stab' finalDistribution where
-    interveneSNM              = snm {dual = M.singleton flight (intervention leaders dual_flight)}
+runOne :: PopularStrat -> [Int] -> SNModel -> Results
+runOne popStrat leaders snm   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
+    interveneSNM              = snm {dual = M.singleton flight (intervention popStrat leaders dual_flight)}
     (avgPublic', avgLeaders') = averageDegrees flightRel leaders
     (finalModel , stab'')     = interleave Variant Basic interveneSNM
     finalDistribution         = posDistribution_t finalModel flight
     flightRel                 = rel snm M.! flight
     stab'                     = fromIntegral <$> stab''
     dual_flight               = dual snm M.! flight
+    (fullyA, fullyR, partSucc)| isNothing (M.lookup flightNorm finalDistribution) = (0.0, 1.0, 0.0)
+                              | finalDistribution M.! flightNorm  == 1.0          = (1.0, 0.0, 1.0)
+                              | finalDistribution M.! flightNorm > 0.5          = (0.0, 0.0, 1.0)
+                              | otherwise                                         = (0, 0, 0)
+
 
 
 
 {-
 Input:
+Popularity Strategy
 List of leaders
 Dual_t: Dual of a specific topic
 
 Output: New dual_t where the leaders have their new positions after intervention.
 -}
-intervention :: [Int] -> IntMap (Set Position) -> IntMap (Set Position)
-intervention leaders dual_t = IntMap.unionWith S.union dual_t $ IntMap.fromList $ zip leaders (repeat baf)
+intervention :: PopularStrat -> [Int] -> IntMap (Set Position) -> IntMap (Set Position)
+intervention Authentic leaders dual_t = IntMap.unionWith S.union dual_t $ IntMap.fromList $ zip leaders (repeat $ S.singleton flightNorm) --insert flightnorm for all leaders
+intervention Popular leaders dual_t = IntMap.mapWithKey (\k v -> if isLeader k then S.fromList [flightNorm, thirdOne, ballot] else v) dual_t where
+    isLeader k' = elem k' leaders -- TODO replace it for all leaders with the popular thing + flightnorm IntMap.unionWith S.union dual_t $ IntMap.fromList $ zip leaders (repeat $ S.fromList [flightNorm, thirdOne]) --I GET IT!!!! I have to remove them looooolll!! todo habe hier thirdOne und Ballot rausgenommen, als test wenn es nicht der mehrheit entspricht
 
 {-
 Input:
-Number of models to generate
+n > 0: Number of models to generat
 List of values for k to test
 
 Output:
@@ -676,10 +636,10 @@ Runs experiment and prints results.
 -}
 runAndShow :: Int -> [Int] -> IO()
 runAndShow n ks = do
-    putStr $ "WELCOME to the experiment zone :) In your experiment, " ++ show n ++ " networks with " ++ show totalNrAgs ++
+    putStr $ "WELCOME to the experiment zone :) In your experiment, " ++ show n ++ " Holme-Kim networks with " ++ show totalNrAgs ++
         " nodes were randomly generated. \n The tested values for the number of leaders were: " ++ show ks ++
         ". Are you READY for the results? \n"
-    results <- generate (experiment n ks)
+    results <- generate (experimentHolme n ks)
     printTable results
 
 
@@ -689,26 +649,27 @@ Input: A list of aggregated result.
 Output: Prints the results to the console.
 -}
 
-printTable :: [(Int, Strategy, Results)] -> IO()
+printTable :: [(Int, PopularStrat, Results)] -> IO()
 printTable results = do
     let strategyMap = M.fromListWith (++) [ (s, [(k, r)]) | (k, s, r) <- results]
-    printStrategy Random (strategyMap M.! Random)
-    printStrategy KRich (strategyMap M.! KRich)
-    printStrategy Nomination (strategyMap M.! Nomination)
+    printPopStrategy Popular (strategyMap M.! Popular)
+    printPopStrategy Authentic (strategyMap M.! Authentic)
+    --printStrategy Nomination (strategyMap M.! Nomination) --TODO habe hier Nomination rausgenommen
+    --printStrategy LocalNom (strategyMap M.! LocalNom)
 
 
 --ACHTUNG . - .
 --TODO xs is ordered the wrong way (decreasing)
-printStrategy :: Strategy -> [(Int, Results)] -> IO ()
-printStrategy s xs = do
+printPopStrategy :: PopularStrat -> [(Int, Results)] -> IO ()
+printPopStrategy s xs = do
     putStrLn $ "\n=== " ++ show s ++ " ==="
-    printf "%5s %10s %10s %10s %10s\n"
-        "k" "Degree Public" "Degree Leaders" "Rounds" "Ratio"
+    printf "%5s %10s %10s %10s %10s %10s %10s %10s\n"
+        "k" "Degree Public" "Degree Leaders" "Rounds" "Ratio" "Success" "Failure" "Partial"
     mapM_ printRow xs
   where
-    printRow (k, Results a' b' c' d') =
-        printf "%5d %10.3f %10.3f %10s %10s\n"
-            k a' b' (show c') (show d')
+    printRow (k, Results a' b' c' d' e' f' g') =
+        printf "%5d %10.3f %10.3f %10s %10s %10s %10s %10s\n"
+            k a' b' (show c') (show d') (show (e'*100) ++ "%") (show (f'*100) ++ "%") (show (g'*100) ++ "%")
 
 --usage in ghci:
 {-

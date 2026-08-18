@@ -24,6 +24,15 @@ taut :: Form
 taut = Disj [propo1, Neg propo1]
 
 
+--TODO write this nicely!!! to check everything it needs to fullful -> put int SNModel
+--TODO extend if I write more
+--check all properties at once
+isValidSNModel :: SNModel -> Bool
+isValidSNModel snm = all (\f -> f snm) [fullRel, nonEmptyAgs,
+                                         nonEmptyPos,
+                                        nonEmptyTpcs, disjointPositionSets]
+
+
 {-
 check if a given SNModel maps every topic to a Relation and
 in each Relation every agent to some set of friends (which may be empty)
@@ -111,34 +120,6 @@ disjointPositionSets (SNM _ positions' _ _) = S.size (S.unions positions') == fo
 
 
 
---TODO extend if I write more
---check all properties at once
-isValidSNModel :: SNModel -> Bool
-isValidSNModel snm = all (\f -> f snm) [fullRel, nonEmptyAgs,
-                                         nonEmptyPos,
-                                        nonEmptyTpcs, disjointPositionSets]
-
-
-
---check if for two consecutive Selecs, only the last applied matters
-consecutiveSelec :: SNModel -> Double -> Double -> Bool
-consecutiveSelec m d1 d2 = updSelecBasic d1' m == updSelecBasic d1' (updSelecBasic d2' m) where
-    d1' = properTau d1
-    d2' = properTau d2
-
-properTau :: Double -> Double
-properTau tau | isZeroFrac && odd intPart = 1
-              | otherwise                    = fracPart
-    where (intPart, fracPart) = properFraction tau
-          isZeroFrac = abs fracPart < epsilon
-          epsilon = 1e-12
-
-
---test if an Infl after a Selec 1 doesn't change anything
-consInflSelecOne :: SNModel -> Double  -> Bool
-consInflSelecOne m d1 = (updSelecBasic 1 m == updInflBasic d1' (updSelecBasic 1 m)) || d1' == 0.0 --(order is not accrordning to syntax ;))
-    where d1' = properTau d1
---TODO check more things I did in simplify
 
 
 --check if an application of Selec makes all relations reflexive
@@ -159,42 +140,6 @@ selecMakesSym :: SNModel -> Double -> Bool
 selecMakesSym m d1 = updSelecBasic d1' m == makeSymModel (updSelecBasic d1' m) where
     d1' = properTau d1
 
-
-simplifyWorksBasic :: SNModel -> BasicForm -> Bool
-simplifyWorksBasic m (BasicForm f) = simplifyWorks m f
-
-simplifyWorksVariant :: SNModel -> VariantForm -> Bool
-simplifyWorksVariant m (VariantForm f) = simplifyWorks m f
-
---checks if a Form evaluates to the same as its simplified version on a given SNModel
-simplifyWorks :: SNModel -> Form -> Bool
-simplifyWorks m f = (m |= f) == (m |= simplify f)
-
-
-
-isTrivialBasic :: BasicForm -> Bool
-isTrivialBasic (BasicForm f) = isTrivial f
-
-isTrivialVariant :: VariantForm -> Bool
-isTrivialVariant (VariantForm f) = isTrivial f
-
---check if a formula simplifies to Top or Bot
-isTrivial :: Form -> Bool
-isTrivial f = f' == Top || f' == Bot where
-    f' = simplify f
-
-
---TODO delete !.!
-prop_trivialFormBasic :: BasicForm -> Property
-prop_trivialFormBasic f =
-  classify (isTrivialBasic f) "simplifies to Top/Bot" $
-    property True
-
-prop_trivialFormVariant :: VariantForm -> Property
-prop_trivialFormVariant f =
-  classify (isTrivialVariant f) "simplifies to Top/Bot" $
-    property True
-
 --count how many steps until stable
 --TODO does this work with the maybe returned in steps?
 prop_numberOfTurns :: Double -> SNModel -> Property
@@ -204,6 +149,7 @@ prop_numberOfTurns tau m =
         collect steps $
         property True
 
+
 prop_numberOfTurnsVariant :: Double -> SNModel -> Property
 prop_numberOfTurnsVariant tau m =
     let steps = snd $ fixCount ((updInflVariant tau'). (updSelecVariant tau')) m
@@ -211,13 +157,30 @@ prop_numberOfTurnsVariant tau m =
         collect steps $
         property True
 
+{-
+SECTION Syntax
+-}
+
+
+--checks if a Form evaluates to the same as its simplified version on a given SNModel
+simplifyWorks :: SNModel -> Form -> Bool
+simplifyWorks m f = (m |= f) == (m |= simplify f)
+
+
+--check if a formula simplifies to Top or Bot
+isTrivial :: Form -> Bool
+isTrivial f = f' == Top || f' == Bot where
+    f' = simplify f
+
+
+--Property to display percentage of generated Forms that are trivial
+prop_trivialForm :: Form -> Property
+prop_trivialForm f =
+  classify (isTrivial f) "simplifies to Top/Bot" $
+    property True
+
+
 --check if a formula contains empty lists after Conj or Disj
-containsEmptyBasic :: BasicForm -> Bool
-containsEmptyBasic (BasicForm f) = containsEmpty f
-
-containsEmptyVariant :: VariantForm -> Bool
-containsEmptyVariant (VariantForm f) = containsEmpty f
-
 containsEmpty :: Form -> Bool
 containsEmpty (Conj xs) = null xs || any containsEmpty xs
 containsEmpty (Disj xs) = null xs || any containsEmpty xs
@@ -226,6 +189,7 @@ containsEmpty (Selec _ _ f) = containsEmpty f
 containsEmpty (Impl f g) = containsEmpty f || containsEmpty g
 containsEmpty (Neg f) = containsEmpty f
 containsEmpty _ = False
+
 
 --check if a simplified Form contains NO occurance of Top/Bot
 topBotFree :: Form -> Bool
@@ -236,37 +200,33 @@ topBotFree = allSubf freePred where
     freePred (Connected {}) = True
     freePred _ = False --Includes Top, Bot (plus for the sake of pattern exhaustion, all complex cases, but those should be handled by allSubf)
 
---check if a simplified Form either simplifies to be trivial, or simplifies so it doesn't contain any occurances of Top/Bot
-topBotpurityBasic :: BasicForm -> Bool
-topBotpurityBasic (BasicForm f) = topBotpurity f
-
-topBotpurityVariant :: VariantForm -> Bool
-topBotpurityVariant (VariantForm f) = topBotpurity f
-
-
+--check if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot
 topBotpurity :: Form -> Bool
 topBotpurity f = f' == Top || (f'== Bot || topBotFree f') where
     f' = simplify f
 
 
+--check if for two consecutive Selecs, only the last applied matters
+consecutiveSelec :: SNModel -> Double -> Double -> Bool
+consecutiveSelec m d1 d2 = updSelecBasic d1' m == updSelecBasic d1' (updSelecBasic d2' m) where
+    d1' = properTau d1
+    d2' = properTau d2
 
-getFormBasic :: BasicForm -> Form
-getFormBasic (BasicForm f) = f
-
-getFormVariant :: VariantForm -> Form
-getFormVariant (VariantForm f) = f
-
-modeConsistentBas :: BasicForm -> Bool
-modeConsistentBas (BasicForm f) = checkModeConsistent f
-
-modeConsistentVar :: VariantForm -> Bool
-modeConsistentVar (VariantForm f) = checkModeConsistent f
+properTau :: Double -> Double
+properTau tau | isZeroFrac && odd intPart = 1
+              | otherwise                    = fracPart
+    where (intPart, fracPart) = properFraction tau
+          isZeroFrac = abs fracPart < epsilon
+          epsilon = 1e-12
 
 
+--test if an Infl Basic after a Selec Basic 1 doesn't change anything
+consInflSelecOne :: SNModel -> Double  -> Bool
+consInflSelecOne m d1 = (updSelecBasic 1 m == updInflBasic d1' (updSelecBasic 1 m)) || d1' == 0.0 --(order is not accrordning to syntax ;))
+    where d1' = properTau d1
 
---CONTINUE HERE
+
 --check if nr of reachable agents nerver grows for variant Selec
---start assuming maps aren't full
 noGrowingReachable :: Double -> SNModel -> Bool
 noGrowingReachable tau m = reachUpdated `smallerEqualThan` reachOriginal where
     upM = updSelecVariant tau' m
@@ -323,7 +283,15 @@ testcombinedTopicsRel (SNM nrAgents' _ rel' _) = combo == makeReflexive combo wh
     combo = combinedTopicsRel nrAgents' rel'
     -}
 
---Hardcoded example from Smets et al. 2020 (Example 2) (all steps)
+
+{-
+SECTION
+Hardcoded SNModels
+-}
+
+{-
+(Example 2) from Smets et al. 2020  (all steps)
+-}
 exPaperstep0, exPaperstep1, exPaperstep2, exPaperstep3, exPaperstep4, exPaperstep5 :: SNModel
 exPaperstep0 = examplePaper
 
@@ -382,7 +350,10 @@ exPaperstep5 = SNM 4 positions' rel' dual' where
   mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1, S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
   sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
 
---Hardcoded example from Smets et al. 2020 (Example 4, with corrected typo) (all steps)
+
+{-
+(Example 4) with corrected typo from Smets et al. 2020  (all steps)
+-}
 
 exPaperVarstep0, exPaperVarstep1, exPaperVarstep2, exPaperVarstep3, exPaperVarstep4, exPaperVarstep5 :: SNModel
 exPaperVarstep0 = examplePaper
@@ -434,11 +405,11 @@ exPaperVarstep5 = SNM 4 positions' rel' dual' where
   mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5, P 6, P 7]), (3, S.fromList [P 5, P 6, P 7])]
   sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11,  P 12]), (2, S.fromList [P 9, P 10, P 11,  P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
 
---Hardcoded own example (interleaving of Variant Infl, Variant Selec)
+{-
+Own example (interleaving of Variant Infl, Variant Selec)
+-}
 
 exOwnstep0, exOwnstep1, exOwnstep2,exOwnstep3, exOwnstep4 :: SNModel
-
---, , , , exOwnstep5
 
 exOwnstep0 = exampleLogicSection
 
@@ -469,6 +440,8 @@ exOwnstep4 = SNM 4 positions' rel' dual' where
   dual' = M.fromList [(T 1, bDual), (T 2, sDual)]
   bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 1, P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
   sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 4, P 5]), (3, S.fromList [P 4, P 5])]
+
+
 
 
 --TODO add testing for semantics apart from the updates!!! some
