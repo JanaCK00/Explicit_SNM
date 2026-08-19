@@ -8,15 +8,14 @@ import SNModel
 import Semantics
 import TestHelpers
 import Syntax
+import SNModel (isValidSNModel)
 
 spec :: Spec
 spec = do
     describe "Testing a simple tautology" $ do
         prop "Arbitrary SNModel fulfills the simple tautology" $ do
             \snm -> (snm::SNModel) |= taut
-    describe "Testing for full Maps" $ do
-        prop "Arbitrary SNModel has complete Relations maps" $ do
-            \snm -> fullRel (snm::SNModel)
+
 
     {-
     will only be useful if I change generation away from using default sets
@@ -24,39 +23,31 @@ spec = do
     describe "Testing for non-empty sets" $ do
         --prop "Arbitrary SNModel has non-empty set of agents"  $ do
            -- \snm -> nonEmptyAgs (snm::SNModel)
-        prop "Arbitrary SNModel has non-empty set of topics"  $ do
-            \snm -> nonEmptyTpcs (snm::SNModel)
-        prop "Arbitrary SNModel has non-empty set of positions"  $ do
-            \snm -> nonEmptyPos (snm::SNModel)
-        prop "Arbitrary SNModel has no dual mapping any agent to the empty set" $ do
+
+        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set" $ do
             \snm -> nonEmptyDualmapping (snm::SNModel)
-        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Basic Infl" $ do
+        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Basic Infl" $ do
             \snm i1 -> nonEmptyDualmappingBasicInfl (i1::Double) (snm::SNModel)
-        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Basic Selec" $ do
+        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Basic Selec" $ do
             \snm i1 -> nonEmptyDualmappingBasicSelec (i1::Double) (snm::SNModel)
-        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Variant Infl" $ do
+        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Variant Infl" $ do
             \snm i1 -> nonEmptyDualmappingVariantInfl (i1::Double) (snm::SNModel)
-        prop "Arbitrary SNModel has no dual mapping any agent to the empty set after Variant Selec" $ do
+        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Variant Selec" $ do
             \snm i1 -> nonEmptyDualmappingVariantSelec (i1::Double) (snm::SNModel)
 
 {- were all falsified, as expected :)
-        prop "All SNModels map every agent in all dual_t (should be falsified)" $ do
+        prop "All SNModels map every agent in all dualVal_t (should be falsified)" $ do
             \snm -> fullDual (snm::SNModel)
-        prop "All SNModels map every agent in all dual_t after Basic Infl(should be falsified)" $ do
+        prop "All SNModels map every agent in all dualVal_t after Basic Infl(should be falsified)" $ do
             \snm i1 -> fullDualBasicInfl (i1::Double) (snm::SNModel)
-        prop "All SNModels map every agent in all dual_t after Basic Selec(should be falsified)" $ do
+        prop "All SNModels map every agent in all dualVal_t after Basic Selec(should be falsified)" $ do
             \snm i1 -> fullDualBasicSelec (i1::Double) (snm::SNModel)
-        prop "All SNModels map every agent in all dual_t after Variant Infl (should be falsified)" $ do
+        prop "All SNModels map every agent in all dualVal_t after Variant Infl (should be falsified)" $ do
             \snm i1 -> fullDualVariantInfl (i1::Double) (snm::SNModel)
-        prop "All SNModels map every agent in all dual_t after Variant Selec(should be falsified)" $ do
+        prop "All SNModels map every agent in all dualVal_t after Variant Selec(should be falsified)" $ do
             \snm i1 -> fullDualVariantSelec (i1::Double) (snm::SNModel)
 
 -}
-
-
-    describe "Testing for unqique positions across topics" $ do
-        prop "Arbitrary SNModel has pairwise disjoint Positions across Topics" $ do
-            \snm -> disjointPositionSets (snm::SNModel)
 
 
 

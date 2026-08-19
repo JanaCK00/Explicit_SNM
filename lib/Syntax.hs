@@ -14,11 +14,21 @@ import SNModel
 import SetTheory
 import Test.QuickCheck.Gen (genDouble, chooseInt)
 import Data.Containers.ListUtils (nubOrd)
+import qualified Data.IntSet as IntSet
+import Data.Set (Set)
+import qualified Data.Set as S
+
+
 
 {-
-  This module defines the logical language. It also provides formula simplification and arbitrary generation of formulas.
+This module defines the logical language.
+It also provides formula simplification and random generation of formulas.
 -}
 
+
+--------------------------------------------------------------------------------
+-- Form definition
+--------------------------------------------------------------------------------
 
 {-
 The two modes for the modal operators.
@@ -45,8 +55,10 @@ A propositional language with two special atoms (Adopted and Connected) and four
     agents (through any topic) based on the proportion of positions they agree on.
 
 
-Forms are assumed to be in-update mode-consistent. This can be checked using  checkModeConsistent.
-This means, we expect any Form not to contain both Infl Basic and Infl Variant, as well as not to contain both Selec Basic and Selec Variant.
+Forms are assumed to be at least in-update mode-consistent.
+This means, we expect any Form not to contain both Infl Basic and Infl Variant,
+as well as not to contain both Selec Basic and Selec Variant.
+This is not enforced in construction but can be checked using the function isInUpdateModeCons.
 -}
 data Form
   = Top                         -- True Constant
@@ -74,7 +86,6 @@ xor :: Form -> Form -> Form
 xor f g = Disj [Conj [f, Neg g], Conj [Neg f, g]]
 
 
-
 {-
 Input:
 List of operators (Infl mode tau or Selec mode tau (of type Form -> Form))
@@ -93,28 +104,47 @@ operatorList :: [Form -> Form] -> Form -> Form
 operatorList = flip (foldr ($))
 
 
-{-
-Input:
-Form
 
-Output:
-Returns (1) True if the Form is in-update mode-consistent.
-        (2) False otherwise.
+
+--------------------------------------------------------------------------------
+-- Predicates about modes in Form
+--------------------------------------------------------------------------------
+
+{-
+Returns a tuple of Lists of Modes that appear in the Form.
+(List of Modes found for Infl operator, List of Modes found for Selec operator)
 -}
-checkModeConsistent :: Form -> Bool
-checkModeConsistent f = consisInfl && consisSelec where
-      consisInfl = length (L.nub $ getModeInfl f) < 2
-      consisSelec = length (L.nub $ getModeSelec f) < 2
+getModes :: Form -> ([Mode], [Mode])
+getModes f = (L.nub $ getModeInfl f, L.nub $ getModeSelec f)
 
+
+--Returns True if the Form is mode-consistent (all Infl and Selec have same mode).
+isModeCons :: Form -> Bool
+isModeCons f = isBasicCons f || isSelecCons f
+
+
+--Returns True if all modal operators appearing in the Form are Mode Basic. False otherwise.
+isBasicCons :: Form -> Bool
+isBasicCons f = all (notElem Variant) [infls, selecs] where
+  (infls, selecs) = getModes f
+
+--Returns True if all modal operators appearing in the Form are Mode Variant. False otherwise.
+isSelecCons :: Form -> Bool
+isSelecCons f = all (notElem Basic) [infls, selecs] where
+  (infls, selecs) = getModes f
+
+
+-- Returns True if the Form is in-update mode-consistent. False otherwise.
+isInUpdateModeCons :: Form -> Bool
+isInUpdateModeCons f = consisInfl && consisSelec where
+      (infls, selecs) = getModes f
+      consisInfl = length infls < 2
+      consisSelec  = length selecs < 2
 
 
 {-
-Input:
-Form
-
-Output:
-A list of the found Infl modes
-(Returns [] if a form doesn't contain any Infl operators and is therefore mode un-specific)
+Returns a list of the found Infl modes.
+(Returns [] if a form doesn't contain any Infl operators and is therefore mode un-specific.)
 -}
 getModeInfl :: Form -> [Mode]
 getModeInfl (Infl mode _ f) = mode : getModeInfl f
@@ -127,12 +157,8 @@ getModeInfl _ = [] --includes Top, Bot, Adopted, Connected
 
 
 {-
-Input:
-Form
-
-Output:
-A list of the found Selec modes
-(Returns [] if a form doesn't contain any Selec operators and is therefore mode un-specific)
+Returns a list of the found Selec modes.
+(Returns [] if a form doesn't contain any Selec operators and is therefore mode un-specific.)
 -}
 getModeSelec :: Form -> [Mode]
 getModeSelec (Infl _ _ f) = getModeSelec f
@@ -145,10 +171,65 @@ getModeSelec _ = [] --includes Top, Bot, Adopted, Connected
 
 
 
+--------------------------------------------------------------------------------
+-- Some Form traversals that collect appearances of Agents, Topics and Positions.
+-- Used in Semantics.hs to check if the appearances in a Form match an SNModel.
+--------------------------------------------------------------------------------
 
+-- Returns the Set of Agents that appear in the Form.
+getAgs :: Form -> AgentSet
+getAgs = IntSet.fromList . getAgsRec --Set creation takes care of duplicates.
+
+getAgsRec :: Form -> [Agent]
+getAgsRec (Adopted ag _) = [ag]
+getAgsRec (Connected _ ag1 ag2) = [ag1, ag2]
+getAgsRec (Neg f) = getAgsRec f
+getAgsRec (Conj xs) = concatMap getAgsRec xs
+getAgsRec (Disj xs) = concatMap getAgsRec xs
+getAgsRec (Impl f g) = getAgsRec f ++ getAgsRec g
+getAgsRec (Infl _ _ f) = getAgsRec f
+getAgsRec (Selec _ _ f) = getAgsRec f
+getAgsRec _ = [] --includes Top, Bot
+
+
+-- Returns the Set of Topics that appear in the Form.
+getTops :: Form -> Set Topic
+getTops = S.fromList . getTopsRec  --Set creation takes care of duplicates.
+
+getTopsRec :: Form -> [Topic]
+getTopsRec (Connected t _ _) = [t]
+getTopsRec (Neg f) = getTopsRec f
+getTopsRec (Conj xs) = concatMap getTopsRec xs
+getTopsRec (Disj xs) = concatMap getTopsRec xs
+getTopsRec (Impl f g) = getTopsRec f ++ getTopsRec g
+getTopsRec (Infl _ _ f) = getTopsRec f
+getTopsRec (Selec _ _ f) = getTopsRec f
+getTopsRec _ = [] --includes Top, Bot, Adopted
+
+
+
+-- Returns the Set of Topics that appear in the Form.
+getPos :: Form -> Set Position
+getPos = S.fromList . getPosRec  --Set creation takes care of duplicates.
+
+getPosRec :: Form -> [Position]
+getPosRec (Adopted _ p) = [p]
+getPosRec (Neg f) = getPosRec f
+getPosRec (Conj xs) = concatMap getPosRec xs
+getPosRec (Disj xs) = concatMap getPosRec xs
+getPosRec (Impl f g) = getPosRec f ++ getPosRec g
+getPosRec (Infl _ _ f) = getPosRec f
+getPosRec (Selec _ _ f) = getPosRec f
+getPosRec _ = [] --includes Top, Bot, Connected
+
+
+
+--------------------------------------------------------------------------------
+-- Simplification of Form
+--------------------------------------------------------------------------------
 
 {-
-Simplify a formula to an equivalent formula.
+Simplifies a formula to an equivalent formula.
 Adapted from Symbolic-Topo-E-Models.Syntax. (dos Santons Gomes (2025))
 
 ! ASSUMES: in-update mode-consistency
@@ -245,7 +326,9 @@ simStep (Infl mode tau f) | boolOfConnected f = simStep f
                           | otherwise         = Infl mode tau (simStep f)
 
 
-
+--------------------------------------------------------------------------------
+-- Helper functions for simStep
+--------------------------------------------------------------------------------
 
 {-
 Input:
@@ -425,9 +508,44 @@ removeLeadingInflBasic  (Neg f)       = Neg $ removeLeadingInflBasic  f
 removeLeadingInflBasic  f             = f -- includes Top, Bot, PrpF, Selec _ and Infl Variant
 
 
+
+
+--------------------------------------------------------------------------------
+-- Random generation of Form
+--------------------------------------------------------------------------------
+
+
+{- TODO continue here
+{-
+Input:
+mode: Mode that all modal operators will use
+snm: SNModel
+
+Output:
+Returns a randomly generated mode-consistent Form that matches the provided SNModel.
+
+Example input in ghci:
+import Test.QuickCheck
+myModel = ...
+generate (getRandomForm Basic myModel)
+-}
+getRandomFormModel :: Mode -> SNModel -> Gen Form
+getRandomFormModel mode snm = do
+  let ags = nrAgents snm
+  let posList = M.concatMap S.toList $ positions snm
+  getRandomForm mode posList
+
+
+getRandomForm :: Mode -> Int -> [Position] -> Gen Form
+getRandomForm mode n tps =
+
+-}
+
 {-
 Adapted from Symbolic-Topo-E-Models.Syntax.
-Generate arbitrary sized formulas. The formulas are in-update mode-consistent.
+Generates arbitrary sized formulas based on the defined default values in SNModel.hs.
+The default values ensure that the arbitrary formulas match the arbitrary SNModels.
+The formulas are mode-consistent.
 
 
  To avoid a high percentage of generated formulas simplifying to Top/Bot, the random generation:
@@ -439,9 +557,8 @@ Like this less than 30% of generated formulas evaluate to Top/Bot.
 
 instance Arbitrary Form where
     arbitrary = do
-      inflMode <- elements [Basic, Variant]
-      selecMode <- elements [Basic, Variant]
-      sized (randomForm inflMode selecMode)
+      mode <- elements [Basic, Variant] --can be changed, if we want to allow mixed-mode (but in-update consistent) formulas
+      sized (randomForm mode mode)
 
       where
 
@@ -471,6 +588,6 @@ usage in ghci:
 import Test.QuickCheck
 myForm <- generate arbitrary :: IO Form --(default sized passed is 30)
 myForm <- generate (resize 10 arbitrary) :: IO Form --to change the size
-checkModeConsistent myForm
+isInUpdateModeCons myForm
 simplify myForm
 -}

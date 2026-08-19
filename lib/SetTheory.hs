@@ -3,6 +3,7 @@
 
 
 --TODO mark where I copied or adapted from SMCDEL
+--TODO rename this file
 
 module SetTheory where
 
@@ -22,7 +23,7 @@ import Test.QuickCheck
   , sublistOf
   , vectorOf
   , listOf
-  , listOf1
+  , listOf1, chooseInt
   )
 import Test.QuickCheck.Gen (suchThat)
 import qualified Data.Vector as V
@@ -87,6 +88,51 @@ Given a relation, check if there are no self-loops.
 -}
 noSelfLoops :: Relation -> Bool
 noSelfLoops = V.ifoldl' (\acc i friends -> acc && IntSet.notMember i friends) True
+
+
+
+
+
+
+{-
+Input:
+lmin - lmax: range of length of returned list
+
+Output:
+Randomly chooses a length in the given range and returns a random sublist of the chosen length.
+-}
+
+sublistOfLength :: Ord a => Int -> Int -> [a] -> Gen [a]
+sublistOfLength lmin lmax xs = do
+    thisL <- chooseInt (lmin,lmax)
+    sublistRec thisL xs
+
+{-
+Input:
+l: desired length of output
+xs: list
+
+Output:
+random subsequence of xs of length l
+-}
+sublistRec :: Eq a => Int -> [a] -> Gen [a]
+sublistRec 0 _ = return []
+sublistRec l xs = do
+    if null xs then return [] --elements throws error if xs is empty
+        else do el <- elements xs
+                rest <- sublistRec (l-1) $ filter (/= el) xs --assuming we don't choose with replacement
+                return $ el:rest
+
+
+
+
+
+
+
+
+
+
+
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.

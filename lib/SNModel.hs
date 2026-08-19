@@ -5,7 +5,7 @@ module SNModel where
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
-  , sublistOf  )
+  , sublistOf)
 import Test.QuickCheck.Gen (chooseInt)
 import qualified Data.Map.Strict as M
 import Data.IntMap.Strict (IntMap)
@@ -15,28 +15,19 @@ import qualified Data.Set as S -- Set is strict ;)
 import Data.Set (Set)
 import qualified Data.IntSet as IntSet
 import SetTheory
-import Data.Bits (testBit)
 import qualified Data.Vector as V
 
 {-
-Explicit representation of Social Network Models following Smets et al. (2020)
-Relational Kripke models, per Def with
- - a non-empty, finite set of agents as the domain
- - a non-empty, finite set of topics
+Explicit representation of Social Networks Models following Smets et al. (2020)
+Relational Kripke models, by definition with
+ - a non-empty, (finite) set of agents as the domain
+ - a non-empty, (finite) set of topics
  - for each topic a non-empty, finite set of positions on the topic. These sets are pairwise disjoint.
  - a binary relation for each topic (= social network).)
--}
 
-{-
-Social networks don't have to satisfy any properties
-(i.e. they can be reflexive and non-symmetric).
--}
-
-
-{-
 Assumptions on the form of SNM: (that aren't enforced here, but should be checked before working with a model)
 
-(1) All sets/maps should by def be non-empty.
+(1) All sets/maps should by def be non-empty. (except IntMap (Set Positions), that can be empty )
 (2) The sets of Positions are pairwise disjoint across topics. TODO manually double them when a provided model violates this.
 (3) The maps contain every topic of the model as a key. Dual_t only contains agents as keys who have non-empty set of positions in that topic
 -}
@@ -47,13 +38,38 @@ Assumptions on the form of SNM: (that aren't enforced here, but should be checke
 data SNModel = SNM
  { nrAgents :: Int --agents are referred to by 0 .. (nrAgents - 1)
  , positions :: M.Map Topic (Set Position) --pairwise disjoint sets ACHTUNG TODO : TOPICS CAN NOT INCLUDE (T 0), that's a special case reserved for internal use!
- , rel :: M.Map Topic Relation --the social networks, every topic should be a key
- , dual :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, but only agents taking more than 0 positions are keys (bc no position taken is also quite common)
- } deriving (Eq, Show)
---TODO maybe write a better Show?
+ , rel :: M.Map Topic Relation --the social networks, every topic should be a key. Social networks don't have to satisfy any properties
+ , dualVal :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, but only agents taking more than 0 positions are keys (bc no position taken is also quite common)
+ } deriving (Eq)
 
 
 
+isValidSNModelList :: SNModel -> [(Bool, String)]
+isValidSNModelList (SNM ags' pos' rel' dualVal') =
+  [ (isValidnrAgents ags' , "Invalid number of agents. You need at least one agent.")
+  , (isValidpositions pos', "Invalid topics/positions. You need at least one topic (T 0 reserved), and for each topic at least one position. \n Positions can't belong to more than one topic.")
+  , (M.keys pos' == M.keys rel' && M.keys pos' == M.keys dualVal', "Not valid. Your topics aren't consistent across maps.")
+  , (allWithKey (\t iPs -> all (`S.isSubsetOf` (pos' M.! t)) iPs) dualVal', "Not valid. Your dualVal valuation assigns positions that aren't consistent with the Topics/Positions map.")
+  , (not (any (any null) dualVal'), "Not valid. Agents that don't adopt any positions in a topic shouldn't be keys in the dualVal_t map.")
+  , (all (\v -> V.length v == ags') rel', "Not valid. Not all of your relations have the right size.")
+  , (all (all (allElems (<= ags'))) rel', "Not valid. Your relations contain agents that don't exist.")
+  , (all (\m -> maximum (IntMap.keys m) <= ags') dualVal', "Not valid. Your dualVal valuation contains agents that don't exist.")
+  ]
+  where
+    allElems predicate ks = all predicate (IntSet.toList ks)
+    allWithKey predicate = M.foldrWithKey (\k v acc -> predicate k v && acc) True
+
+isValidSNModel :: SNModel -> Bool
+isValidSNModel snm = all fst $ isValidSNModelList snm
+
+isValidnrAgents :: Int -> Bool
+isValidnrAgents n = n > 0
+
+isValidpositions :: M.Map Topic (Set Position) -> Bool
+isValidpositions pos = M.size pos > 0
+  && (T 0) `M.notMember` pos
+  && not (any null pos)
+  && S.size (S.unions pos) == foldr ((+) . S.size) 0 pos
 
 --See definitions for Agent/Relation in SetTheory.hs
 
@@ -61,16 +77,11 @@ newtype Topic = T Int deriving (Eq, Show, Ord) --T 0 is reserved for internal us
 newtype Position = P Int deriving (Eq, Show, Ord)
 
 
---CHANGE default values if neded
-defaultNrAgs, nrTpcs, nrPosTotal :: Int
-defaultNrAgs = 120
-nrTpcs = 2
-nrPosTotal = 6 --number of positions in total, make sure nrPosTotal >= nrTpcs
 
 
 {-
 Input: SNModel
-Output: Valuation corresponding to the dual
+Output: Valuation corresponding to the dualVal
 -}
 val :: SNModel -> M.Map Topic (M.Map Position IntSet.IntSet)
 val snm = M.fromList [(t, val_t snm t)| t <- topics] where
@@ -86,17 +97,17 @@ Output: Valuation for the given Topic
 val_t :: SNModel -> Topic -> M.Map Position IntSet.IntSet
 val_t snm t =  M.fromListWith IntSet.union
     [ (p, IntSet.singleton i)
-    | (i, ps) <- dual_t_list
+    | (i, ps) <- dualVal_t_list
     , p <- S.toList ps
     ] where
-  dual_t = dual snm M.! t
-  dual_t_list =  IntMap.toList dual_t
+  dualVal_t = dualVal snm M.! t
+  dualVal_t_list =  IntMap.toList dualVal_t
 
 
 --TODO test
 {-
 Input: Valuation for a specific topic.
-Output: Corresponding dual for that topic.
+Output: Corresponding dualVal for that topic.
 Agents that don't hold any position of that topic don't appear in the map.
 -}
 valToDual_t :: M.Map Position IntSet.IntSet -> IntMap (Set Position)
@@ -107,194 +118,46 @@ valToDual_t val_t' = IntMap.fromListWith S.union
     ] where
   val_t_list = M.toList val_t'
 
-{-
-some hardcoded examples
--}
-
-
-alice, bob, carol, david, emily :: Int
-alice = 0
-bob = 1
-carol = 2
-david = 3
-emily = 4
-
-books, games, sports :: Topic
-books = T 1
-games = T 2
-sports = T 3
-
-
-defaultTopics :: Set Topic
-defaultTopics = S.fromList [books, games, sports]
-
-fantasy, nonFiction, romance :: Position
-fantasy = P 1
-nonFiction = P 2
-romance = P 3
-
-booksPositions :: Set Position
-booksPositions = S.fromList [fantasy, nonFiction, romance]
-
-cardGames, boardGames, rolePlaying :: Position
-cardGames = P 4
-boardGames = P 5
-rolePlaying = P 6
-
-gamesPositions :: Set Position
-gamesPositions = S.fromList [cardGames, boardGames, rolePlaying]
-
-teamSports, endurance, weights :: Position
-teamSports = P 7
-endurance = P 8
-weights = P 9
-
-sportsPositions :: Set Position
-sportsPositions = S.fromList [teamSports, endurance, weights]
-
-a, b, c, d, ab, ac, bc, abc, ad, cd, acd :: AgentSet
-a = IntSet.singleton alice
-b = IntSet.singleton bob
-c = IntSet.singleton carol
-ab = IntSet.fromList [alice, bob]
-ac = IntSet.fromList [alice, carol]
-bc = IntSet.fromList [bob, carol]
-cd = IntSet.fromList [carol, david]
-abc = IntSet.fromList [alice, bob, carol]
-d = IntSet.singleton david
-ad = IntSet.fromList [alice, david]
-acd = IntSet.fromList [alice, carol, david]
-
-{-
-TODO construct better example!
-this one hardly changes for the Infl operation
--}
-exampleSmall :: SNModel
-exampleSmall = SNM 3 positions' rel' dual' where
-    positions' = M.fromList [(books, booksPositions), (games, gamesPositions), (sports, sportsPositions)]
-    rel' = M.fromList [(books, booksRel), (games, gamesRel), (sports, sportsRel)] where
-        booksRel = V.fromList [abc, IntSet.empty, ac]
-        gamesRel = V.fromList [IntSet.empty, b, b]
-        sportsRel = V.fromList [ac, IntSet.empty, a]
-    dual' = M.fromList [(books, bookdual) , (games, gamesdual), (sports, sportsdual)] where
-        bookdual = IntMap.fromList [(0, S.fromList [fantasy, romance]), (1, S.singleton romance), (2, S.fromList [fantasy, nonFiction])]
-        gamesdual = IntMap.fromList [(1, S.singleton cardGames), (2, S.fromList [boardGames, cardGames])]
-        sportsdual = IntMap.fromList [(0, S.fromList [teamSports,endurance,weights]), (1, S.singleton weights), (2, S.fromList [weights, endurance])]
-
-
-{-
---TODO bit of a boring example, it's for simple testing of the settheory stuff
-exampleCircleFriendship :: SNModel
-exampleCircleFriendship = SNM 4 positions' rel' val' where
-  --group = IntSet.fromList [alice, bob, carol, david]
-  positions' = M.fromList [(books, booksPositions), (games, gamesPositions), (sports, sportsPositions)]
-  rel' = M.fromList [(books, booksRel), (games, gamesRel), (sports, sportsRel)] where
-        booksRel = M.fromList [(alice, b),(bob, c),(carol, d), (david,a)]
-        gamesRel = M.fromList [(alice, b),(bob, c),(carol, d), (david,a)]
-        sportsRel = M.fromList [(alice, b),(bob, c),(carol, d), (david,a)]
-  val' = M.fromList [(fantasy, ac), (romance, ab), (nonFiction, c), (cardGames, bc), (boardGames, c), (rolePlaying, IntSet.empty), (teamSports, a), (endurance, ac), (weights, abc)]
--}
-
-
---example to test stabilization
-
-exampleStab :: Int -> SNModel
-exampleStab n = SNM stabAgSize positions' rel' dual'  where
-  stabPosSize = n
-  stabAgSize = 2^n
-  positions' = M.singleton (T 1) (S.fromList $ map P [1..stabPosSize])
-  rel'       = M.singleton (T 1) $ makeEmptyRel stabAgSize
-  dual'      = M.singleton (T 1) (foldl (\cur i -> IntMap.insert i (constructSet i) cur) IntMap.empty [0..stabAgSize-1]) where
-    constructSet i = S.fromList $ map (P . (+1)) $ filter (testBit i) [0..(stabPosSize-1)]
 
 
 
-exampleStab2 :: SNModel
-exampleStab2 = SNM 4 positions' rel' dual' where
-  positions' = M.singleton (T 1) (S.fromList [P 1, P 2, P 3, P 4, P 5, P 6])
-  rel'       = M.singleton (T 1) $ makeEmptyRel 4
-  dual'      = M.singleton (T 1) (IntMap.fromList [(0, S.empty), (1, S.fromList [P 3, P 4, P 5, P 6]), (2, S.fromList [P 1, P 5, P 6]), (3, S.fromList [P 1, P 3, P 4])])
--- ACHTUNG ! ..
---TODO make it safe (like break at 100 or something)
-{-
-Runs a function f until stabilization (output == input) and
-returns stabilized output and the number of iterations it took to get there.
--}
-fixCount :: Eq a => (a -> a) -> a -> (a, Int)
-fixCount f = go 0
-  where
-    go k current =
-      let x' = f current
-      in if x' == current
-           then (current, k)
-           else go (k + 1) x'
-
-
---TODO replace occurance of fixCount with this?
-stabCountSafe :: Eq a => Int -> (a -> a) -> a -> (a, Maybe Int)
-stabCountSafe maxIter f = go 0
-  where
-    go k current
-      | k >= maxIter = (current, Nothing)
-      | x' == current = (current, Just k)
-      | otherwise = go (k + 1) x'
-      where
-        x' = f current
-
-
-
-examplePaper :: SNModel
-examplePaper = SNM 4 positions' rel' dual' where
-  positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
-  rel' = M.fromList $ zip (map T [1,2,3]) $ replicate 3 (makeEmptyRel 4)
-  dual' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.singleton (P 2)), (2, S.fromList [P 1, P 3, P 4]), (3, S.fromList [P 3,P 4])]
-  mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList [P 9, P 10])]
-
-exampleLogicSection :: SNModel
-exampleLogicSection = SNM 4 positions' rel' dual' where
-  positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
-  rel' = M.fromList [(T 1, V.fromList [a, a, ad, a]), (T 2, V.fromList [a, b, c, d])]
-  dual' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.singleton (P 2)), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 2,P 3])]
-  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
 
 
 
 {-
-these work with the provided lists of agents/topics/positions, not only with the default :)
-so it can also be used for generating a model based on user input...
-It uses lists instead of sets, bc the sublist function would require list conversion anyway
+Functions for random generation of components of SNModels.
+They use Lists instead of Sets for convenience, and because the sublist function would require list conversion anyway.
 -}
 
 
 {-
-Given a list a number agents, generates an arbitrary binary relation.
--}
+Input:
+nrAgs: Stands for agents [0..nrAgs-1].
 
-{- ussage in ghci:
-import Test.QuickCheck
-generate (randomRel 4)
+Output:
+Generates a random Relation between agents [0..nrAgs-1].
 -}
 randomRel :: Int -> Gen Relation
 randomRel nrAgs = do
   list <- randomRelList nrAgs nrAgs
   return $ V.fromList list
 
---second argument it the recursively decreasing one
+--second argument is the recursively decreasing one
 randomRelList :: Int -> Int -> Gen [IntSet.IntSet]
 randomRelList _ 0 = return []
 randomRelList nrAgs n = do
-    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]  -- TODO two ideas for less dense (averarage degree is now n/2) -> either pick from sublist again (should halve the probability) or restrict to numerical value (like in case study, recursively pick until you reach a number between x and y)try restrictin (but not like this, it couldn't generate)`suchThat` (\xs -> length xs <= (nrAgs `div` 10))
+    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]
     rest <- randomRelList nrAgs (n-1)
     return $ thisAgsFriends:rest
 
 
 {-
-  Given a list of agents and a list of topics (both duplicate-free), generates an arbitrary
-  relation for each topic. This function applies randomRel to each topic.
-  adapted from symbolic-topo-e-models.Explicit.kripkeModels
+Input:
+nrAgs: Stands for agents [0..nrAgs-1].
+tpcs: List of Topics (duplicate-free)
+
+Output:
+Generates an random relation for each topic and returns the corresponding map.
 -}
 randomRelMap :: Int -> [Topic] -> Gen (M.Map Topic Relation)
 randomRelMap _ [] = return M.empty
@@ -305,26 +168,44 @@ randomRelMap nrAgs (t:tpcs) =  do
 
 
 {-
-Given a list of positions of a certain topic and a list of agents (both duplicate free), generate a random dual (Map from Agent to Subset of those Positions)
+Input:
+pos: Set of Positions (assumed to belong to one topic)
+ags: List of Agents (duplicate free)
+
+Output:
+Generates a random dualVal for one topic (Map from Agent to subset of those Positions) and returns the corresponding map.
 -}
 randomDualT :: Set Position -> [Agent] -> Gen (IntMap (Set Position))
 randomDualT _ [] = return IntMap.empty
 randomDualT pos (ag:ags) = do
     thisAgsPos <- subsetOf pos
     rest <- randomDualT pos ags
-    if S.size thisAgsPos > 0 then
+    if S.size thisAgsPos > 0 then --only include Agents in the map that take at least one position
       return $ IntMap.insert ag thisAgsPos rest
     else
       return rest
 
---takes the positions map and a list of agents, applies randomDualT for each topic
---then returns randomDual
+
+{-
+Input:
+posMap: positions map (Topic to Set of Positions)
+ags: List of Agents
+
+Output:
+Applies randomDualT for each topic and returns a randomly generated dualVal.
+-}
 randomDualMap :: M.Map Topic (Set Position) -> [Agent] -> Gen (M.Map Topic (IntMap (Set Position)))
 randomDualMap posMap ags = traverse (`randomDualT` ags) posMap
 
+{-
+Input:
+l: number of partitions > 0
+xs: list
+(Assumptions: length xs >= l)
 
---assumes length list >= Int
---takes an Int and a list. generates a partition with exactly Int number of non-empty subsets
+Output:
+Generates a partition of xs with exactly l non-empty subsets.
+-}
 randomPart :: Int -> [a] -> Gen [[a]]
 randomPart 1 xs = return [xs]
 randomPart l xs = do
@@ -336,8 +217,13 @@ randomPart l xs = do
 
 
 {-
-given a list of topics and a list of positions (both duplicate free & non-empty, ASSUMES length ps>=length ts)
-generate a mapping from topics to sets of positions (pairwise disjoint, non-empty)
+Input:
+ts: List of Topics
+ps: List of Positions
+(Assumptions: both duplicate free & non-empty, length ps>=length ts)
+
+Output:
+Generates a mapping from topics to sets of positions (pairwise disjoint, non-empty).
 -}
 randomPosMap :: [Topic] -> [Position] -> Gen (M.Map Topic (Set Position))
 randomPosMap ts ps = do
@@ -345,13 +231,52 @@ randomPosMap ts ps = do
   return $ M.fromList $ zipWith (\t partP -> (t, S.fromList partP)) ts partition
 
 
+
+
 {-
-  Generate an arbitrary Social Network model.
-    adapted from symbolic-topo-e-models.Explicit.kripkeModels
+Random generation of SNModels.
+-}
+
+
+{-
+Input:
+n: number of agents
+tps: a list of tuples (Topic, [Position])
+
+Output:
+Returns a randomly generated SNmodel if the input is valid.
+
+Example input in ghci:
+import Test.QuickCheck
+generate (getRandomSNModel 5 [(T 1, [P 1, P 2]), (T 2, [P 3, P 4])]
+
+This will generate a random SNModel with 5 agents and two topics having 2 positions each.
+-}
+getRandomSNModel :: Int -> [(Topic, [Position])] -> Gen SNModel
+getRandomSNModel n tps = do
+  let pos = M.map S.fromList $ M.fromList tps --make the input a Map
+  if not (isValidnrAgents n)
+    then error "Invalid number of agents. You need at least one agent."
+    else if not (isValidpositions pos)
+            then error "Invalid topics/positions. You need at least one topic (T 0 reserved), and for each topic at least one position. \n Positions can't belong to more than one topic."
+            else do dualVal' <- randomDualMap pos [0..n-1]
+                    rel' <- randomRelMap n (M.keys pos)
+                    return $ SNM n pos rel' dualVal'
+
+
+
+--CHANGE default values for arbitrary generation if needed
+defaultNrAgs, nrTpcs, nrPosTotal :: Int
+defaultNrAgs = 120
+nrTpcs = 2
+nrPosTotal = 6 --number of positions in total, make sure nrPosTotal >= nrTpcs
+
+{-
+  Generates an arbitrary SNModel based on the defined default values.
+  The default values are necessary to make sure the arbitrary Forms match the arbitrary SNModels.
 -}
 instance Arbitrary SNModel where
   arbitrary = do
-    --TODO limit some stuff? (not necessary, bc I don't close under reflexivity/transitivity?)
     let tpcs = map T [1..nrTpcs] --fixed for formula generation purposes
         pos = map P [1..nrPosTotal] --fixed for formula generation purposes
     randomTPMap <- randomPosMap tpcs pos
@@ -362,7 +287,10 @@ instance Arbitrary SNModel where
 
 
 
---takes a SNModel and makes full relations for all topics
+{-
+Takes a SNModel and makes full relations for all topics.
+Used in Semantics.hs for Selec Basic 0.
+-}
 makeFullRelModel :: SNModel -> SNModel
 makeFullRelModel m@(SNM nrAgents' pos' _ _) = m { rel = fullRels } where
     fullRels = M.fromList $ map (, fullRel) (M.keys pos')
@@ -372,28 +300,85 @@ makeFullRelModel m@(SNM nrAgents' pos' _ _) = m { rel = fullRels } where
 makeFullRel :: Int -> Relation
 makeFullRel n = V.replicate n $ IntSet.fromList [0..(n-1)]
 
---takes a number of agents and creates an empty Relation
+{-
+Takes a number of agents and creates an empty Relation.
+Can be used for SNModel construction.
+-}
 makeEmptyRel :: Int -> Relation
 makeEmptyRel n = V.replicate n IntSet.empty
 
-
---takes a SNModel and makes all its relations reflexive
+{-
+Takes a SNModel and makes all its relations reflexive.
+Can be used for SNModel construction.
+Is currently used in testing.
+-}
 makeReflModel :: SNModel -> SNModel
 makeReflModel m@(SNM _ _ rel' _) = m {rel = M.map makeReflexive rel'}
 
---takes a SNmodel and makes all its relations symmetric
+{-
+Takes a SNmodel and makes all its relations symmetric.
+Can be used for SNModel construction.
+Is currently used in testing.
+-}
 makeSymModel :: SNModel -> SNModel
 makeSymModel m@(SNM _ _ rel' _) = m {rel = M.map makeSymmetric rel'}
 
---takes a SNModel and makes all its relations transitive
-makeTransModel :: SNModel -> SNModel
-makeTransModel m@(SNM _ _ rel' _) = m {rel = M.map makeTransitive rel'}
+
+--TODO Achtung . - .
+--Makes SNModels more readable in the console (works especially for smaller models).
+instance Show SNModel where
+    show snm =
+        unlines
+            [ ""
+            , "SNModel"
+            , ""
+            , "Number of Agents: " ++ show (nrAgents snm)
+            , ""
+            , "Topics and Positions:"
+            , showMap (positions snm)
+            , ""
+            , "Relations:"
+            , showMapWith showRelation (rel snm)
+            , ""
+            , "Dual valuation:"
+            , showMapWith showDual (dualVal snm)
+            ]
+      where
+        showMap :: M.Map Topic (Set Position) -> String
+        showMap =
+            unlines
+            . map (\(t, ps) -> show t ++ ": " ++ show (S.toList ps))
+            . M.toList
+
+        showMapWith :: Show k
+                    => (v -> String)
+                    -> M.Map k v
+                    -> String
+        showMapWith showValue =
+            unlines
+            . map (\(k, v) -> show k ++ ":\n" ++ showValue v)
+            . M.toList
+
+        showRelation :: Relation -> String
+        showRelation r =
+            unlines
+                [ show i ++ ": " ++ show (IntSet.toList neighbours)
+                | (i, neighbours) <- zip [0..] (V.toList r)
+                ]
+
+        showDual :: IntMap (Set Position) -> String
+        showDual d =
+            unlines
+                [ show ag ++ ": " ++ show (S.toList ps)
+                | (ag, ps) <- IntMap.toList d
+                ]
 
 
 {-
 usage in ghci:
 import Test.QuickCheck
 myModel <- generate arbitrary :: IO SNModel
+generate (randomRel 4)
 -}
 
 

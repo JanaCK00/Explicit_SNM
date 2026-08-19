@@ -1,17 +1,16 @@
 module CaseStudy where
 
 import SNModel
-    ( stabCountSafe,
-      val_t,
+    ( val_t,
       Position(..),
-      SNModel(SNM, rel, nrAgents, dual),
-      Topic(..), valToDual_t, makeEmptyRel )
+      SNModel(SNM, rel, nrAgents, dualVal),
+      Topic(..), valToDual_t)
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , elements, generate, sublistOf, chooseInt)
 import Test.QuickCheck.Gen (genDouble)
-import SetTheory (Agent, Relation)
+import SetTheory (Agent, Relation, sublistRec)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.IntSet as IntSet
@@ -31,6 +30,23 @@ import Data.Maybe (isNothing)
 import Syntax (Mode (Basic, Variant))
 
 
+{-
+Input:
+maxIter: maximum number of iterations
+f: function (endomorphism)
+
+Output:
+Returns the function that will apply f until the output is stable or the maximum number of iterations has been reached.
+Then it will return a tuple of (stabilized output, number of iterations it took until stable).
+If stabilization wasn't reached in maxIter rounds, Nothing is returned for the number of iterations.
+-}
+stabCountSafe :: Eq a => Int -> (a -> a) -> a -> (a, Maybe Int)
+stabCountSafe maxIter f = go 0 where
+    go k current | k >= maxIter  = (current, Nothing)
+                 | x' == current = (current, Just k)
+                 | otherwise     = go (k + 1) x'
+      where
+        x' = f current
 
 {-
 Define necessary Topics, Positions, Maps and Sets of Positions for the case study.
@@ -284,36 +300,6 @@ translate xs = V.fromList $  L.map IntSet.fromList xs
 
 
 {-
-Input:
-lmin - lmax: range of length of returned list
-
-Output:
-randomly chooses a length in the given range and returns a random sublist of the chosen length
--}
-
-sublistOfLength :: Ord a => Int -> Int -> [a] -> Gen [a]
-sublistOfLength lmin lmax xs = do
-    thisL <- chooseInt (lmin,lmax)
-    sublistRec thisL xs
-
-{-
-Input:
-l: desired length of output
-xs: list
-
-Output:
-random subsequence of xs of length l
--}
-sublistRec :: Eq a => Int -> [a] -> Gen [a]
-sublistRec 0 _ = return []
-sublistRec l xs = do
-    if null xs then return [] --elements throws error if xs is empty
-        else do el <- elements xs
-                rest <- sublistRec (l-1) $ filter (/= el) xs --assuming we don't choose with replacement
-                return $ el:rest
-
-
-{-
 Define a wrapper type to allow arbitrary generation of SNMs that fulfill the defined
 properties for the case study.
 
@@ -348,8 +334,8 @@ instance Arbitrary SNMCase where
         --takeFourthOne <- IntSet.fromList <$> sublistRec 70 ags
         let popular = S.empty--TODO continue here to get out the majority
         let val_t' = M.fromList [(ballot, takeBallot), (thirdOne, takeThirdOne)]
-        let dual' = M.singleton flight $ valToDual_t val_t'
-        return $ SNMCase (SNM totalNrAgs posMapFlight rel' dual') popular
+        let dualVal' = M.singleton flight $ valToDual_t val_t'
+        return $ SNMCase (SNM totalNrAgs posMapFlight rel' dualVal') popular
 
 
 getSNMCase :: Gen SNMCase
@@ -598,13 +584,13 @@ Intervenes on positions of leaders, runs interleaving and returns results.
 -}
 runOne :: PopularStrat -> [Int] -> SNModel -> Results
 runOne popStrat leaders snm   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
-    interveneSNM              = snm {dual = M.singleton flight (intervention popStrat leaders dual_flight)}
+    interveneSNM              = snm {dualVal = M.singleton flight (intervention popStrat leaders dualVal_flight)}
     (avgPublic', avgLeaders') = averageDegrees flightRel leaders
     (finalModel , stab'')     = interleave Variant Basic interveneSNM
     finalDistribution         = posDistribution_t finalModel flight
     flightRel                 = rel snm M.! flight
     stab'                     = fromIntegral <$> stab''
-    dual_flight               = dual snm M.! flight
+    dualVal_flight               = dualVal snm M.! flight
     (fullyA, fullyR, partSucc)| isNothing (M.lookup flightNorm finalDistribution) = (0.0, 1.0, 0.0)
                               | finalDistribution M.! flightNorm  == 1.0          = (1.0, 0.0, 1.0)
                               | finalDistribution M.! flightNorm > 0.5          = (0.0, 0.0, 1.0)
@@ -619,12 +605,12 @@ Popularity Strategy
 List of leaders
 Dual_t: Dual of a specific topic
 
-Output: New dual_t where the leaders have their new positions after intervention.
+Output: New dualVal_t where the leaders have their new positions after intervention.
 -}
 intervention :: PopularStrat -> [Int] -> IntMap (Set Position) -> IntMap (Set Position)
-intervention Authentic leaders dual_t = IntMap.unionWith S.union dual_t $ IntMap.fromList $ zip leaders (repeat $ S.singleton flightNorm) --insert flightnorm for all leaders
-intervention Popular leaders dual_t = IntMap.mapWithKey (\k v -> if isLeader k then S.fromList [flightNorm, thirdOne, ballot] else v) dual_t where
-    isLeader k' = elem k' leaders -- TODO replace it for all leaders with the popular thing + flightnorm IntMap.unionWith S.union dual_t $ IntMap.fromList $ zip leaders (repeat $ S.fromList [flightNorm, thirdOne]) --I GET IT!!!! I have to remove them looooolll!! todo habe hier thirdOne und Ballot rausgenommen, als test wenn es nicht der mehrheit entspricht
+intervention Authentic leaders dualVal_t = IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ zip leaders (repeat $ S.singleton flightNorm) --insert flightnorm for all leaders
+intervention Popular leaders dualVal_t = IntMap.mapWithKey (\k v -> if isLeader k then S.fromList [flightNorm, thirdOne, ballot] else v) dualVal_t where
+    isLeader k' = elem k' leaders -- TODO replace it for all leaders with the popular thing + flightnorm IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ zip leaders (repeat $ S.fromList [flightNorm, thirdOne]) --I GET IT!!!! I have to remove them looooolll!! todo habe hier thirdOne und Ballot rausgenommen, als test wenn es nicht der mehrheit entspricht
 
 {-
 Input:
