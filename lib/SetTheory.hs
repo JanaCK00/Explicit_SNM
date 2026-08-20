@@ -6,8 +6,6 @@
 --TODO rename this file
 
 module SetTheory where
-
-import SMCDEL.Internal.Help (lfp)
 import Data.Set
   ( Set
   )
@@ -26,69 +24,11 @@ import Test.QuickCheck
   , listOf1, chooseInt
   )
 import Test.QuickCheck.Gen (suchThat)
-import qualified Data.Vector as V
-import Data.Vector (Vector) --vectors are 0-based!!
 
 --Adapted from symbolic-topo-e-models.SetTheory.hs
 
 
 --TODO describe what this file does ;)
-
-type Agent = Int
-type AgentSet = IntSet
-
-type Relation = Vector AgentSet --represents a relation where at the i-th index we store the set of agents that are socially connected to agent i. an empty set if none
---assuming zero friends are rare, this gives O(1) access (adjacency set)
-
-
-
---Given a Relation, make it reflexive.
-makeReflexive :: Relation -> Relation
-makeReflexive = V.imap IntSet.insert
-
-
-
---Given a Relation, make it symmetric.
-makeSymmetric :: Relation -> Relation
-makeSymmetric rel = makeSym 0 (V.toList rel) rel where
-  makeSym _ [] acc = acc
-  makeSym i (ifriends:rest) acc = makeSym (i+1) rest (V.imap addMe acc) where
-    addMe a f | a `IntSet.member` ifriends = IntSet.insert i f
-              | otherwise                 = f
-
-{-
-  Recursively make a given relation transitive. For each agent, given their current
-  friends group, add all agents reachable from any friend in their friends group
-  until a fixpoint is reached.
--}
-makeTransitive :: Relation -> Relation
-makeTransitive rel = lfp makeTransOnce rel where
-  makeTransOnce = V.map addRel
-  addRel val = IntSet.unions [rel V.! w | w <- IntSet.toList val] `IntSet.union` val
-
-combineRelation :: Relation -> Relation -> Relation
-combineRelation = V.zipWith IntSet.union
-
-{-
-Given a relation, check if it is symmetric.
--}
-isSym :: Relation -> Bool
-isSym rel = rel == makeSymmetric rel
-
-
-{-
-Given a relation, check if it is reflexive.
--}
-isRefl :: Relation -> Bool
-isRefl = V.ifoldl' (\acc i friends -> acc && IntSet.member i friends) True
-
-
-{-
-Given a relation, check if there are no self-loops.
--}
-noSelfLoops :: Relation -> Bool
-noSelfLoops = V.ifoldl' (\acc i friends -> acc && IntSet.notMember i friends) True
-
 
 
 
@@ -125,14 +65,23 @@ sublistRec l xs = do
 
 
 
+{-
+Input:
+l: number of partitions > 0
+xs: list
+(Assumptions: length xs >= l)
 
-
-
-
-
-
-
-
+Output:
+Generates a partition of xs with exactly l non-empty subsets.
+-}
+randomPart :: Int -> [a] -> Gen [[a]]
+randomPart 1 xs = return [xs]
+randomPart l xs = do
+  let n = length xs
+  thisLength <- chooseInt (1, n - l + 1) --make sure the rest of the (l-1) partitions still get at least one element each
+  let (first, rest) = splitAt thisLength xs
+  restPart <- randomPart (l-1) rest
+  return $ first : restPart
 
 
 -- Arbitrary Set Generation, based on existing functions for arbitrary list generation.
@@ -165,8 +114,9 @@ intSetElements = elements . IntSet.toList
 isOfSize :: Set a -> Int -> Bool
 isOfSize set k = S.size set == k
 
-isOfSizeBetween :: Int -> Int -> Set a -> Bool
-isOfSizeBetween lower upper set = lower <= S.size set && S.size set <= upper
+isOfSizeBetween :: Int -> Int -> [a] -> Bool
+isOfSizeBetween lower upper xs = lower <= l &&  l <= upper where
+  l = length xs
 
 setSizeOf :: (Ord a) => Gen a -> Int -> Gen (Set a)
 setSizeOf g k = fmap S.fromList (vectorOf k g)

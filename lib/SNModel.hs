@@ -14,34 +14,178 @@ import qualified Data.Set as S -- Set is strict ;)
 
 import Data.Set (Set)
 import qualified Data.IntSet as IntSet
+import Data.IntSet (IntSet)
 import SetTheory
-import qualified Data.Vector as V
+import qualified Data.Vector as V --vectors are 0-based!!
+import Data.Vector (Vector)
+import SMCDEL.Internal.Help (lfp)
+
 
 {-
-Explicit representation of Social Networks Models following Smets et al. (2020)
-Relational Kripke models, by definition with
- - a non-empty, (finite) set of agents as the domain
- - a non-empty, (finite) set of topics
- - for each topic a non-empty, finite set of positions on the topic. These sets are pairwise disjoint.
- - a binary relation for each topic (= social network).)
-
-Assumptions on the form of SNM: (that aren't enforced here, but should be checked before working with a model)
-
-(1) All sets/maps should by def be non-empty. (except IntMap (Set Positions), that can be empty )
-(2) The sets of Positions are pairwise disjoint across topics. TODO manually double them when a provided model violates this.
-(3) The maps contain every topic of the model as a key. Dual_t only contains agents as keys who have non-empty set of positions in that topic
+This module defines Social Networks Models.
+It also provides random generation of Social Networks Models.
 -}
 
---no friends is very rare -> vector
---no position is NOT rare -> Map
 
+
+
+
+
+
+--Given a Relation, make it reflexive.
+makeReflexive :: Relation -> Relation
+makeReflexive = V.imap IntSet.insert
+
+
+
+--Given a Relation, make it symmetric.
+makeSymmetric :: Relation -> Relation
+makeSymmetric rel' = makeSym 0 (V.toList rel') rel' where
+  makeSym _ [] acc = acc
+  makeSym i (ifriends:rest) acc = makeSym (i+1) rest (V.imap addMe acc) where
+    addMe a f | a `IntSet.member` ifriends = IntSet.insert i f
+              | otherwise                 = f
+
+{-
+  Recursively make a given relation transitive. For each agent, given their current
+  friends group, add all agents reachable from any friend in their friends group
+  until a fixpoint is reached.
+-}
+makeTransitive :: Relation -> Relation
+makeTransitive rel' = lfp makeTransOnce rel' where
+  makeTransOnce = V.map addRel
+  addRel val' = IntSet.unions [rel' V.! w | w <- IntSet.toList val'] `IntSet.union` val'
+
+combineRelation :: Relation -> Relation -> Relation
+combineRelation = V.zipWith IntSet.union
+
+{-
+Given a relation, check if it is symmetric.
+-}
+isSym :: Relation -> Bool
+isSym rel' = rel' == makeSymmetric rel'
+
+
+{-
+Given a relation, check if it is reflexive.
+-}
+isRefl :: Relation -> Bool
+isRefl = V.ifoldl' (\acc i friends -> acc && IntSet.member i friends) True
+
+
+{-
+Given a relation, check if there are no self-loops.
+-}
+noSelfLoops :: Relation -> Bool
+noSelfLoops = V.ifoldl' (\acc i friends -> acc && IntSet.notMember i friends) True
+
+
+
+
+
+--------------------------------------------------------------------------------
+-- Definition of Social Networks Models
+--------------------------------------------------------------------------------
+
+{-
+Social Networks Models are relational Kripke models, by definition with:
+
+ - a non-empty, (finite) set of agents as the domain
+ - a non-empty, (finite) set of topics
+ - for each topic a non-empty, finite set of positions on the topic (These sets are pairwise disjoint.)
+ - a binary relation for each topic (= social network).)
+   (These don't have to satisfy any specific properties (such as symmetry or reflexivity).)
+-}
+
+
+{-
+Data representation for topics, positions, agents and relations.
+-}
+newtype Topic = T Int deriving (Eq, Show, Ord)
+newtype Position = P Int deriving (Eq, Show, Ord)
+type Agent = Int
+type AgentSet = IntSet
+{-
+A Relation represents a directed binary relation in the form of a vector of adjacency sets.
+At the i-tn index we store the set of friends of agent i.
+-}
+type Relation = Vector AgentSet
+
+
+{-
+Social Networks Models are represented using the data type SNModel, consisting of the following fields:
+
+- nrAgents:  An Int representing the number of Agents. It defines the set of agents ([0...nrAgents-1]).
+- positions: A map from Topics to sets of Positions. It defines the set of topics and the corresponding sets of positions.
+- rel:       A map from Topics to Relations. It defines the binary relation for each topic.
+- dualVal:   A map from Topics to dual valuations (maps from Agents to sets of Positions).
+             It defines the set of positions each agent has adopted for each topic.
+            Agents that haven't adopted any position of a topic are omitted from the map.
+
+SNModels are assumed to follow the definition of Social Networks Models specified above.
+Additionally, the Topic (T 0) is reserved for internal use (see Semantics.hs).
+These restrictions aren't enforced in construction, but should be checked using the function TODO
+-}
 data SNModel = SNM
- { nrAgents :: Int --agents are referred to by 0 .. (nrAgents - 1)
- , positions :: M.Map Topic (Set Position) --pairwise disjoint sets ACHTUNG TODO : TOPICS CAN NOT INCLUDE (T 0), that's a special case reserved for internal use!
- , rel :: M.Map Topic Relation --the social networks, every topic should be a key. Social networks don't have to satisfy any properties
- , dualVal :: M.Map Topic (IntMap (Set Position)) --every topic should be a key, but only agents taking more than 0 positions are keys (bc no position taken is also quite common)
+ { nrAgents :: Int
+ , positions :: M.Map Topic (Set Position)
+ , rel :: M.Map Topic Relation
+ , dualVal :: M.Map Topic (IntMap (Set Position))
  } deriving (Eq)
 
+
+
+{-
+For convenience, we provide a translation from the dual valuation to the valuation.
+-}
+
+{-
+Input: SNModel
+Output: Valuation corresponding to the dualVal
+-}
+val :: SNModel -> M.Map Topic (M.Map Position AgentSet)
+val snm = M.fromList [(t, val_t snm t)| t <- topics] where
+  topics = M.keys $ positions snm
+
+{-
+Input: SNModel, Topic
+Output: Valuation for the given Topic
+-}
+
+--TODO test
+--TODO I think positions that aren't taken by anyone won't be in the map at all
+val_t :: SNModel -> Topic -> M.Map Position AgentSet
+val_t snm t =  M.fromListWith IntSet.union
+    [ (p, IntSet.singleton i)
+    | (i, ps) <- dualVal_t_list
+    , p <- S.toList ps
+    ] where
+  dualVal_t = dualVal snm M.! t
+  dualVal_t_list =  IntMap.toList dualVal_t
+
+
+--TODO test
+{-
+Input: Valuation for a specific topic.
+Output: Corresponding dualVal for that topic.
+Agents that don't hold any position of that topic don't appear in the map.
+-}
+valToDualVal_t :: M.Map Position AgentSet -> IntMap (Set Position)
+valToDualVal_t val_t' = IntMap.fromListWith S.union
+    [ (i, S.singleton p)
+    | (p, is) <- val_t_list
+    , i <- IntSet.toList is
+    ] where
+  val_t_list = M.toList val_t'
+
+
+
+
+{-
+Checks if an SNModel is a valid Social Networks Model.
+-}
+isValidSNModel :: SNModel -> Bool
+isValidSNModel snm = all fst $ isValidSNModelList snm
 
 
 isValidSNModelList :: SNModel -> [(Bool, String)]
@@ -59,67 +203,17 @@ isValidSNModelList (SNM ags' pos' rel' dualVal') =
     allElems predicate ks = all predicate (IntSet.toList ks)
     allWithKey predicate = M.foldrWithKey (\k v acc -> predicate k v && acc) True
 
-isValidSNModel :: SNModel -> Bool
-isValidSNModel snm = all fst $ isValidSNModelList snm
 
+--Checks if the provided number is a valid nrAgents for an SNModel.
 isValidnrAgents :: Int -> Bool
 isValidnrAgents n = n > 0
 
+--Checks if a provided map from Topics to Positions is a valid positions for an SNModel.
 isValidpositions :: M.Map Topic (Set Position) -> Bool
 isValidpositions pos = M.size pos > 0
   && (T 0) `M.notMember` pos
   && not (any null pos)
   && S.size (S.unions pos) == foldr ((+) . S.size) 0 pos
-
---See definitions for Agent/Relation in SetTheory.hs
-
-newtype Topic = T Int deriving (Eq, Show, Ord) --T 0 is reserved for internal use
-newtype Position = P Int deriving (Eq, Show, Ord)
-
-
-
-
-{-
-Input: SNModel
-Output: Valuation corresponding to the dualVal
--}
-val :: SNModel -> M.Map Topic (M.Map Position IntSet.IntSet)
-val snm = M.fromList [(t, val_t snm t)| t <- topics] where
-  topics = M.keys $ positions snm
-
-{-
-Input: SNModel, Topic
-Output: Valuation for the given Topic
--}
-
---TODO test
---TODO I think positions that aren't taken by anyone won't be in the map at all
-val_t :: SNModel -> Topic -> M.Map Position IntSet.IntSet
-val_t snm t =  M.fromListWith IntSet.union
-    [ (p, IntSet.singleton i)
-    | (i, ps) <- dualVal_t_list
-    , p <- S.toList ps
-    ] where
-  dualVal_t = dualVal snm M.! t
-  dualVal_t_list =  IntMap.toList dualVal_t
-
-
---TODO test
-{-
-Input: Valuation for a specific topic.
-Output: Corresponding dualVal for that topic.
-Agents that don't hold any position of that topic don't appear in the map.
--}
-valToDual_t :: M.Map Position IntSet.IntSet -> IntMap (Set Position)
-valToDual_t val_t' = IntMap.fromListWith S.union
-    [ (i, S.singleton p)
-    | (p, is) <- val_t_list
-    , i <- IntSet.toList is
-    ] where
-  val_t_list = M.toList val_t'
-
-
-
 
 
 
@@ -143,7 +237,7 @@ randomRel nrAgs = do
   return $ V.fromList list
 
 --second argument is the recursively decreasing one
-randomRelList :: Int -> Int -> Gen [IntSet.IntSet]
+randomRelList :: Int -> Int -> Gen [AgentSet]
 randomRelList _ 0 = return []
 randomRelList nrAgs n = do
     thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]
@@ -175,11 +269,11 @@ ags: List of Agents (duplicate free)
 Output:
 Generates a random dualVal for one topic (Map from Agent to subset of those Positions) and returns the corresponding map.
 -}
-randomDualT :: Set Position -> [Agent] -> Gen (IntMap (Set Position))
-randomDualT _ [] = return IntMap.empty
-randomDualT pos (ag:ags) = do
+randomDualValT :: Set Position -> [Agent] -> Gen (IntMap (Set Position))
+randomDualValT _ [] = return IntMap.empty
+randomDualValT pos (ag:ags) = do
     thisAgsPos <- subsetOf pos
-    rest <- randomDualT pos ags
+    rest <- randomDualValT pos ags
     if S.size thisAgsPos > 0 then --only include Agents in the map that take at least one position
       return $ IntMap.insert ag thisAgsPos rest
     else
@@ -192,28 +286,11 @@ posMap: positions map (Topic to Set of Positions)
 ags: List of Agents
 
 Output:
-Applies randomDualT for each topic and returns a randomly generated dualVal.
+Applies randomDualValT for each topic and returns a randomly generated dualVal.
 -}
-randomDualMap :: M.Map Topic (Set Position) -> [Agent] -> Gen (M.Map Topic (IntMap (Set Position)))
-randomDualMap posMap ags = traverse (`randomDualT` ags) posMap
+randomDualValMap :: M.Map Topic (Set Position) -> [Agent] -> Gen (M.Map Topic (IntMap (Set Position)))
+randomDualValMap posMap ags = traverse (`randomDualValT` ags) posMap
 
-{-
-Input:
-l: number of partitions > 0
-xs: list
-(Assumptions: length xs >= l)
-
-Output:
-Generates a partition of xs with exactly l non-empty subsets.
--}
-randomPart :: Int -> [a] -> Gen [[a]]
-randomPart 1 xs = return [xs]
-randomPart l xs = do
-  let n = length xs
-  thisLength <- chooseInt (1, n - l + 1) --make sure the rest of the (l-1) partitions still get at least one element each
-  let (first, rest) = splitAt thisLength xs
-  restPart <- randomPart (l-1) rest
-  return $ first : restPart
 
 
 {-
@@ -232,7 +309,6 @@ randomPosMap ts ps = do
 
 
 
-
 {-
 Random generation of SNModels.
 -}
@@ -248,9 +324,9 @@ Returns a randomly generated SNmodel if the input is valid.
 
 Example input in ghci:
 import Test.QuickCheck
-generate (getRandomSNModel 5 [(T 1, [P 1, P 2]), (T 2, [P 3, P 4])]
+generate (getRandomSNModel 5 [(T 1, [P 1, P 2]), (T 2, [P 3, P 4])])
 
-This will generate a random SNModel with 5 agents and two topics having 2 positions each.
+This example will generate a random SNModel with 5 agents and two topics having 2 positions each.
 -}
 getRandomSNModel :: Int -> [(Topic, [Position])] -> Gen SNModel
 getRandomSNModel n tps = do
@@ -259,30 +335,32 @@ getRandomSNModel n tps = do
     then error "Invalid number of agents. You need at least one agent."
     else if not (isValidpositions pos)
             then error "Invalid topics/positions. You need at least one topic (T 0 reserved), and for each topic at least one position. \n Positions can't belong to more than one topic."
-            else do dualVal' <- randomDualMap pos [0..n-1]
+            else do dualVal' <- randomDualValMap pos [0..n-1]
                     rel' <- randomRelMap n (M.keys pos)
                     return $ SNM n pos rel' dualVal'
 
 
-
---CHANGE default values for arbitrary generation if needed
+{-
+Default values for arbitrary generation. (defining the domain for Agents, Topics and Positions that can occur)
+These are necessary to make sure arbitrary Forms match arbitrary SNModels.
+-}
 defaultNrAgs, nrTpcs, nrPosTotal :: Int
 defaultNrAgs = 120
 nrTpcs = 2
-nrPosTotal = 6 --number of positions in total, make sure nrPosTotal >= nrTpcs
+nrPosTotal = 6 --number of positions in total, assumes nrPosTotal >= nrTpcs
 
 {-
   Generates an arbitrary SNModel based on the defined default values.
-  The default values are necessary to make sure the arbitrary Forms match the arbitrary SNModels.
+  The default values ensure that the arbitrary Forms match the arbitrary SNModels.
 -}
 instance Arbitrary SNModel where
   arbitrary = do
-    let tpcs = map T [1..nrTpcs] --fixed for formula generation purposes
-        pos = map P [1..nrPosTotal] --fixed for formula generation purposes
+    let tpcs = map T [1..nrTpcs]
+        pos = map P [1..nrPosTotal]
     randomTPMap <- randomPosMap tpcs pos
     randomRels <- randomRelMap defaultNrAgs tpcs
-    randomDual <- randomDualMap randomTPMap [0..defaultNrAgs-1]
-    return (SNM defaultNrAgs randomTPMap randomRels randomDual)
+    randomDualVal <- randomDualValMap randomTPMap [0..defaultNrAgs-1]
+    return (SNM defaultNrAgs randomTPMap randomRels randomDualVal)
 
 
 
@@ -327,36 +405,32 @@ makeSymModel m@(SNM _ _ rel' _) = m {rel = M.map makeSymmetric rel'}
 --TODO Achtung . - .
 --Makes SNModels more readable in the console (works especially for smaller models).
 instance Show SNModel where
-    show snm =
-        unlines
+    show snm = unlines
             [ ""
             , "SNModel"
             , ""
             , "Number of Agents: " ++ show (nrAgents snm)
             , ""
             , "Topics and Positions:"
-            , showMap (positions snm)
+            , showPositions (positions snm)
             , ""
             , "Relations:"
-            , showMapWith showRelation (rel snm)
+            , showRelations (rel snm)
             , ""
             , "Dual valuation:"
-            , showMapWith showDual (dualVal snm)
+            , showDualVal (dualVal snm)
             ]
       where
-        showMap :: M.Map Topic (Set Position) -> String
-        showMap =
+        showPositions :: M.Map Topic (Set Position) -> String
+        showPositions =
             unlines
             . map (\(t, ps) -> show t ++ ": " ++ show (S.toList ps))
             . M.toList
 
-        showMapWith :: Show k
-                    => (v -> String)
-                    -> M.Map k v
-                    -> String
-        showMapWith showValue =
+        showRelations :: M.Map Topic Relation -> String
+        showRelations =
             unlines
-            . map (\(k, v) -> show k ++ ":\n" ++ showValue v)
+            . map (\(t, r) -> show t ++ ":\n" ++ showRelation r)
             . M.toList
 
         showRelation :: Relation -> String
@@ -366,8 +440,14 @@ instance Show SNModel where
                 | (i, neighbours) <- zip [0..] (V.toList r)
                 ]
 
-        showDual :: IntMap (Set Position) -> String
-        showDual d =
+        showDualVal :: M.Map Topic (IntMap (Set Position)) -> String
+        showDualVal =
+            unlines
+            . map (\(t, d) -> show t ++ ":\n" ++ showDualVal_t d)
+            . M.toList
+
+        showDualVal_t :: IntMap (Set Position) -> String
+        showDualVal_t d =
             unlines
                 [ show ag ++ ": " ++ show (S.toList ps)
                 | (ag, ps) <- IntMap.toList d

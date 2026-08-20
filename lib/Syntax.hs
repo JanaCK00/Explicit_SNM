@@ -17,6 +17,7 @@ import Data.Containers.ListUtils (nubOrd)
 import qualified Data.IntSet as IntSet
 import Data.Set (Set)
 import qualified Data.Set as S
+import qualified Data.Map as M
 
 
 
@@ -27,7 +28,7 @@ It also provides formula simplification and random generation of formulas.
 
 
 --------------------------------------------------------------------------------
--- Form definition
+-- Formula definition
 --------------------------------------------------------------------------------
 
 {-
@@ -58,7 +59,7 @@ A propositional language with two special atoms (Adopted and Connected) and four
 Forms are assumed to be at least in-update mode-consistent.
 This means, we expect any Form not to contain both Infl Basic and Infl Variant,
 as well as not to contain both Selec Basic and Selec Variant.
-This is not enforced in construction but can be checked using the function isInUpdateModeCons.
+This is not enforced in construction but should be checked using the function isInUpdateModeCons.
 -}
 data Form
   = Top                         -- True Constant
@@ -104,14 +105,12 @@ operatorList :: [Form -> Form] -> Form -> Form
 operatorList = flip (foldr ($))
 
 
-
-
 --------------------------------------------------------------------------------
 -- Predicates about modes in Form
 --------------------------------------------------------------------------------
 
 {-
-Returns a tuple of Lists of Modes that appear in the Form.
+Returns a tuple of Lists of Modes that occur in the Form.
 (List of Modes found for Infl operator, List of Modes found for Selec operator)
 -}
 getModes :: Form -> ([Mode], [Mode])
@@ -120,21 +119,21 @@ getModes f = (L.nub $ getModeInfl f, L.nub $ getModeSelec f)
 
 --Returns True if the Form is mode-consistent (all Infl and Selec have same mode).
 isModeCons :: Form -> Bool
-isModeCons f = isBasicCons f || isSelecCons f
+isModeCons f = isBasicCons f || isVariantCons f
 
 
---Returns True if all modal operators appearing in the Form are Mode Basic. False otherwise.
+--Returns True if all modal operators occuring in the Form are Mode Basic. False otherwise.
 isBasicCons :: Form -> Bool
 isBasicCons f = all (notElem Variant) [infls, selecs] where
   (infls, selecs) = getModes f
 
---Returns True if all modal operators appearing in the Form are Mode Variant. False otherwise.
-isSelecCons :: Form -> Bool
-isSelecCons f = all (notElem Basic) [infls, selecs] where
+--Returns True if all modal operators occuring in the Form are Mode Variant. False otherwise.
+isVariantCons :: Form -> Bool
+isVariantCons f = all (notElem Basic) [infls, selecs] where
   (infls, selecs) = getModes f
 
 
--- Returns True if the Form is in-update mode-consistent. False otherwise.
+-- Returns True if the Form is at least in-update mode-consistent. False otherwise.
 isInUpdateModeCons :: Form -> Bool
 isInUpdateModeCons f = consisInfl && consisSelec where
       (infls, selecs) = getModes f
@@ -172,11 +171,11 @@ getModeSelec _ = [] --includes Top, Bot, Adopted, Connected
 
 
 --------------------------------------------------------------------------------
--- Some Form traversals that collect appearances of Agents, Topics and Positions.
--- Used in Semantics.hs to check if the appearances in a Form match an SNModel.
+-- Some Form traversals that collect occurences of Agents, Topics and Positions.
+-- Used in Semantics.hs to check if the occurences in a Form match an SNModel.
 --------------------------------------------------------------------------------
 
--- Returns the Set of Agents that appear in the Form.
+-- Returns the Set of Agents that occur in the Form.
 getAgs :: Form -> AgentSet
 getAgs = IntSet.fromList . getAgsRec --Set creation takes care of duplicates.
 
@@ -192,7 +191,7 @@ getAgsRec (Selec _ _ f) = getAgsRec f
 getAgsRec _ = [] --includes Top, Bot
 
 
--- Returns the Set of Topics that appear in the Form.
+-- Returns the Set of Topics that occur in the Form.
 getTops :: Form -> Set Topic
 getTops = S.fromList . getTopsRec  --Set creation takes care of duplicates.
 
@@ -208,7 +207,7 @@ getTopsRec _ = [] --includes Top, Bot, Adopted
 
 
 
--- Returns the Set of Topics that appear in the Form.
+-- Returns the Set of Topics that occur in the Form.
 getPos :: Form -> Set Position
 getPos = S.fromList . getPosRec  --Set creation takes care of duplicates.
 
@@ -514,73 +513,98 @@ removeLeadingInflBasic  f             = f -- includes Top, Bot, PrpF, Selec _ an
 -- Random generation of Form
 --------------------------------------------------------------------------------
 
-
-{- TODO continue here
 {-
 Input:
 mode: Mode that all modal operators will use
 snm: SNModel
 
 Output:
-Returns a randomly generated mode-consistent Form that matches the provided SNModel.
+Returns a randomly generated, mode-consistent and simplified Form that matches the provided SNModel.
+This means, all Agents, Topics and Positions that occur in the random Form are present in the SNModel.
+Hence, the Form can be checked on the SNModel.
 
 Example input in ghci:
 import Test.QuickCheck
 myModel = ...
-generate (getRandomForm Basic myModel)
+myForm <- generate (getRandomForm Basic myModel)
 -}
 getRandomFormModel :: Mode -> SNModel -> Gen Form
 getRandomFormModel mode snm = do
   let ags = nrAgents snm
-  let posList = M.concatMap S.toList $ positions snm
-  getRandomForm mode posList
+  let posList =  M.toList $ M.map S.toList $ positions snm
+  getRandomForm mode ags posList
 
 
-getRandomForm :: Mode -> Int -> [Position] -> Gen Form
-getRandomForm mode n tps =
+{-
+Input:
+mode: Mode that all modal operators will use
+n: number of agents
+tps: list of tuples (Topic, [Position])
 
+Output:
+Returns a randomly generated, mode-consistent and simplified Form that matches the input.
+This means, all Agents, Topics and Positions that occur in the random Form were part of the input.
+
+Example input in ghci:
+import Test.QuickCheck
+myForm <- generate (getRandomForm Basic 5 [(T 1,[P 1, P 2]), (T 2, [P 3, P 4])])
 -}
+getRandomForm :: Mode -> Int -> [(Topic, [Position])] -> Gen Form
+getRandomForm mode n tps = simplify <$> randomForm arbA arbT arbP mode mode 10 --last parameter is a fixed, humanly readable size
+  where arbA = chooseInt (0, n-1)
+        arbT = elements $ map fst tps
+        arbP = elements $ concatMap snd tps
 
 {-
 Adapted from Symbolic-Topo-E-Models.Syntax.
-Generates arbitrary sized formulas based on the defined default values in SNModel.hs.
-The default values ensure that the arbitrary formulas match the arbitrary SNModels.
-The formulas are mode-consistent.
 
+Input:
+arbA: A generator for random Int
+arbT: A generator for random Topic
+arbP: A generator for random Position
+i: Mode for Infl
+s: Mode for Selec
+n: size (is decreasing to make sure we stop the recursive generation)
+
+Output:
+Generates a random Form that is at least in-update mode-consistent.
+If the both provided modes are equal, the random Form will be mode-consistent.
 
  To avoid a high percentage of generated formulas simplifying to Top/Bot, the random generation:
   - doesn't include pure Top/Bot
   - avoids empty list for Conj/Disj
 Like this less than 30% of generated formulas evaluate to Top/Bot.
 -}
+randomForm :: Gen Int -> Gen Topic -> Gen Position -> Mode -> Mode -> Int -> Gen Form
+randomForm arbA arbT arbP _ _ 0 = oneof [ Adopted <$> arbA <*> arbP
+                    , Connected <$> arbT <*> arbA <*> arbA
+                    ]
+randomForm arbA arbT arbP i s n = oneof [ Adopted <$> arbA <*> arbP
+                    , Connected <$> arbT <*> arbA <*> arbA
+                    , Neg <$> st
+                    , Conj <$> listOf st `suchThat` isOfSizeBetween 1 10 --restricts the list to a maximum of 10 elements
+                    , Disj <$> listOf st `suchThat` isOfSizeBetween 1 10
+                    , Impl <$> st <*> st
+                    , Infl i <$> genDouble <*> st
+                             , Selec s <$> genDouble <*> st
+                    ]
+    where
+      st = randomForm arbA arbT arbP i s (n `div` 3)
 
+{-
+Generates arbitrary sized formulas based on the defined default values in SNModel.hs.
+The default values ensure that the arbitrary formulas match the arbitrary SNModels.
+This means, all Agents, Topics and Positions that occur in an arbitrary Form occur in any arbitrary SNModel.
+The formulas are mode-consistent.
+-}
 
 instance Arbitrary Form where
     arbitrary = do
       mode <- elements [Basic, Variant] --can be changed, if we want to allow mixed-mode (but in-update consistent) formulas
-      sized (randomForm mode mode)
-
-      where
-
-        arbitraryAg = chooseInt (0, defaultNrAgs-1)
-        arbitraryPos = P <$> chooseInt (1, nrPosTotal)
-        arbitraryTpc = T <$> chooseInt (1, nrTpcs)
-
-        randomForm :: Mode -> Mode -> Int -> Gen Form
-        randomForm _ _ 0 = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
-                             , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
-                             ]
-        randomForm i s n = oneof [ Adopted <$> arbitraryAg <*> arbitraryPos
-                             , Connected <$> arbitraryTpc <*> arbitraryAg <*> arbitraryAg
-                             , Neg <$> st
-                             , Conj <$> listOf st `suchThat` (not . null)
-                             , Disj <$> listOf st `suchThat` (not . null)
-                             , Impl <$> st <*> st
-                             , Infl i <$> genDouble <*> st
-                             , Selec s <$> genDouble <*> st
-                             ]
-          where
-            st = randomForm i s (n `div` 3)
+      sized (randomForm arbADef arbTDef arbPDef mode mode) where
+        arbADef = chooseInt (0, defaultNrAgs-1)
+        arbTDef = T <$> chooseInt (1, nrTpcs)
+        arbPDef = P <$> chooseInt (1, nrPosTotal)
 
 
 {-
@@ -591,3 +615,4 @@ myForm <- generate (resize 10 arbitrary) :: IO Form --to change the size
 isInUpdateModeCons myForm
 simplify myForm
 -}
+

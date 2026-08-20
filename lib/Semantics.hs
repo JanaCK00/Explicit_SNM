@@ -3,7 +3,7 @@ module Semantics where
 
 --TODO only necessary imports
 import Syntax ( Form(..), Mode(..), isInUpdateModeCons, simplify, getAgs, getTops, getPos)
-import SNModel ( SNModel(rel, dualVal, SNM, nrAgents, positions), Position, makeFullRelModel, Topic(..), isValidSNModel)
+import SNModel ( SNModel(rel, dualVal, SNM, nrAgents, positions), Position, makeFullRelModel, Topic(..), isValidSNModel, Relation, makeTransitive, makeReflexive, combineRelation)
 import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -16,7 +16,6 @@ import Data.Vector (Vector)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as L
-import SetTheory (Relation, makeTransitive, makeReflexive, combineRelation)
 
 
 {-
@@ -28,17 +27,14 @@ SNModel snm
 Form f
 
 Output:
-Checks if the Form is in-update mode consistent.
+Checks if the Form is in-update mode consistent. --TODO maybe change to mode-consistent
 Checks if the SNModel is valid.
-
-    TODO
 Checks if agents, topics and positions appearing in Form also appear in SNModel
 
-
-    If so, simplifies f and checks if f holds on snm.
+If all conditions hold, simplifies f and checks if f holds on snm.
 -}
 (*|=) :: SNModel -> Form -> Bool
-(*|=) snm f | not (isInUpdateModeCons f) = error "Formula is not at least in-operator mode-consistent."
+(*|=) snm f | not (isInUpdateModeCons f) = error "Formula is not at least in-operator mode-consistent." --TODO maybe change to mode-consistent?
             | not (isValidSNModel snm)    = error "Social Networks Model is not valid."
             | not (match snm f)           = error "Formula contains Agents, Topics or Positions that aren't present in the Social Networks Model."
             | otherwise                   = snm |= simplify f
@@ -63,7 +59,7 @@ in order to avoid irrelevant and costly update operations.)
 (|=) :: SNModel -> Form -> Bool
 (|=) _ Top                                      = True
 (|=) _ Bot                                      = False
-(|=) m (Adopted agent position')                = any ((position' `S.member`) . lookupDual agent) (dualVal m) -- faster now that we don't have full maps in dualVal. with dualVal this is slower sadly :( bc. we have to search each topic for the position in question, (and bc positions aren't intsets, but we assume more agents and searching the map also takes log n). wonder if the easier update makes up for it...but I do think so
+(|=) m (Adopted agent position')                = any ((position' `S.member`) . lookupDualVal agent) (dualVal m) -- faster now that we don't have full maps in dualVal. with dualVal this is slower sadly :( bc. we have to search each topic for the position in question, (and bc positions aren't intsets, but we assume more agents and searching the map also takes log n). wonder if the easier update makes up for it...but I do think so
 (|=) m (Connected topic agent1 agent2)          = agent2 `IntSet.member`((rel m ! topic) V.! agent1)
 (|=) m (Neg f)                                  = not $ m |= f
 (|=) m (Conj fs)                                = all (m |=) fs --returns true on empty list
@@ -123,9 +119,9 @@ updInflBasic tau m@(SNM nrAgents' positions' rel' dualVal') = m { dualVal = M.ma
         --makes it slower (additional lookup) if we have all different friend groups. but that isn't very likely and I think we save some time when there are many people with the same friend group
         --TODO if stuff was ordered, we could consider searching for subsets in the map... not sure how much sense that would make though
         buildFriendsGroupMap [] = M.empty
-        buildFriendsGroupMap (x:xs) = M.insert x (computePosSet tau (IntSet.size x) ( concatMap (S.toList . flip lookupDual dualVal_t) (IntSet.toList x))) restMap  where
+        buildFriendsGroupMap (x:xs) = M.insert x (computePosSet tau (IntSet.size x) ( concatMap (S.toList . flip lookupDualVal dualVal_t) (IntSet.toList x))) restMap  where
                                         restMap = buildFriendsGroupMap xs
-        getNewPos ag | nr_friends == 0                 = lookupDual ag dualVal_t  --if ag has no friends, positions stay the same
+        getNewPos ag | nr_friends == 0                 = lookupDualVal ag dualVal_t  --if ag has no friends, positions stay the same
                      | tau == 0                        = positions' ! t --if tau is zero, all people with friends get the full positions list of the topic
                      | otherwise                       = friendsGroupMap ! friends  where --should always be present, otherwise it's a mistake
                             friends | (T 0) `M.member` rel' = (rel'! (T 0)) V.! ag  --case for Variant Infl
@@ -149,7 +145,7 @@ Precompute  the sizes of the sets in a map. Stores in a vector for O(1) access
 --takes dualVal_t for updSelec and gives the nr of pos held per agent on that topic
 -}
 precomputeSetSize :: Int -> IntMap (Set b) -> Vector Int
-precomputeSetSize nrAgs dualVal_t = V.generate nrAgs (\i -> S.size (lookupDual i dualVal_t))
+precomputeSetSize nrAgs dualVal_t = V.generate nrAgs (\i -> S.size (lookupDualVal i dualVal_t))
 
 
 
@@ -161,8 +157,8 @@ buildRelMatrix nrAgs dualVal_t p tau = makeSymMat $ Mat.matrix nrAgs nrAgs pred_
     pred_sim_T (i, j)  | i<=j      = True
                        | otherwise = fromIntegral (p - (nr_i_pos + nr_j_pos) + 2 * nr_intersect) / fromIntegral p >= tau where
                                         nr_intersect = S.size $ S.intersection i_pos j_pos
-                                        i_pos = lookupDual (i-1) dualVal_t
-                                        j_pos = lookupDual (j-1) dualVal_t
+                                        i_pos = lookupDualVal (i-1) dualVal_t
+                                        j_pos = lookupDualVal (j-1) dualVal_t
                                         nr_i_pos = posSizesVector V.! (i-1)
                                         nr_j_pos = posSizesVector V.! (j-1)
 
@@ -230,8 +226,8 @@ combinedTopicsRel nragents' = M.foldl' combineRelation (V.replicate nragents' In
 
     --I might keep this version around for comparison
 updInflVariant :: Double -> SNModel -> SNModel
-updInflVariant tau (SNM nragents' positions' rel' dualVal') =  SNM nragents' positions' rel' newDual where
-    newDual = dualVal (updInflBasic tau (SNM nragents' positions' rel'' dualVal'))
+updInflVariant tau (SNM nragents' positions' rel' dualVal') =  SNM nragents' positions' rel' newDualVal where
+    newDualVal = dualVal (updInflBasic tau (SNM nragents' positions' rel'' dualVal'))
     rel'' = M.singleton (T 0) (combinedTopicsRel nragents' rel')
 
 
@@ -246,8 +242,8 @@ updSelecVariant tau m@(SNM nrAgents' positions' rel' dualVal') = m {rel = newRel
         newFriends ag = IntSet.filter (pred_sim_T ag) (transClosure V.! ag) --TODO looking this up too many times?
         pred_sim_T i j = fromIntegral (p - (nr_i_pos + nr_j_pos) + 2 * nr_intersect) / fromIntegral p >= tau where
                                         nr_intersect = S.size $ S.intersection i_pos j_pos
-                                        i_pos = lookupDual i dualVal_t
-                                        j_pos = lookupDual j dualVal_t
+                                        i_pos = lookupDualVal i dualVal_t
+                                        j_pos = lookupDualVal j dualVal_t
                                         nr_i_pos = posSizesVector V.! i
                                         nr_j_pos = posSizesVector V.! j
 
@@ -255,8 +251,8 @@ updSelecVariant tau m@(SNM nrAgents' positions' rel' dualVal') = m {rel = newRel
 
 
 --helper function for non-total dualVal
-lookupDual :: IntMap.Key -> IntMap (Set a) -> Set a
-lookupDual = IntMap.findWithDefault S.empty
+lookupDualVal :: IntMap.Key -> IntMap (Set a) -> Set a
+lookupDualVal = IntMap.findWithDefault S.empty
 
 {-
 usage in ghci

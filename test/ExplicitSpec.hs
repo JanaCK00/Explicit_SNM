@@ -25,27 +25,27 @@ spec = do
            -- \snm -> nonEmptyAgs (snm::SNModel)
 
         prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set" $ do
-            \snm -> nonEmptyDualmapping (snm::SNModel)
+            \snm -> nonEmptyDualValmapping (snm::SNModel)
         prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Basic Infl" $ do
-            \snm i1 -> nonEmptyDualmappingBasicInfl (i1::Double) (snm::SNModel)
+            \snm i1 -> nonEmptyDualValmappingBasicInfl (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Basic Selec" $ do
-            \snm i1 -> nonEmptyDualmappingBasicSelec (i1::Double) (snm::SNModel)
+            \snm i1 -> nonEmptyDualValmappingBasicSelec (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Variant Infl" $ do
-            \snm i1 -> nonEmptyDualmappingVariantInfl (i1::Double) (snm::SNModel)
+            \snm i1 -> nonEmptyDualValmappingVariantInfl (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Variant Selec" $ do
-            \snm i1 -> nonEmptyDualmappingVariantSelec (i1::Double) (snm::SNModel)
+            \snm i1 -> nonEmptyDualValmappingVariantSelec (i1::Double) (snm::SNModel)
 
 {- were all falsified, as expected :)
         prop "All SNModels map every agent in all dualVal_t (should be falsified)" $ do
-            \snm -> fullDual (snm::SNModel)
+            \snm -> fullDualVal (snm::SNModel)
         prop "All SNModels map every agent in all dualVal_t after Basic Infl(should be falsified)" $ do
-            \snm i1 -> fullDualBasicInfl (i1::Double) (snm::SNModel)
+            \snm i1 -> fullDualValBasicInfl (i1::Double) (snm::SNModel)
         prop "All SNModels map every agent in all dualVal_t after Basic Selec(should be falsified)" $ do
-            \snm i1 -> fullDualBasicSelec (i1::Double) (snm::SNModel)
+            \snm i1 -> fullDualValBasicSelec (i1::Double) (snm::SNModel)
         prop "All SNModels map every agent in all dualVal_t after Variant Infl (should be falsified)" $ do
-            \snm i1 -> fullDualVariantInfl (i1::Double) (snm::SNModel)
+            \snm i1 -> fullDualValVariantInfl (i1::Double) (snm::SNModel)
         prop "All SNModels map every agent in all dualVal_t after Variant Selec(should be falsified)" $ do
-            \snm i1 -> fullDualVariantSelec (i1::Double) (snm::SNModel)
+            \snm i1 -> fullDualValVariantSelec (i1::Double) (snm::SNModel)
 
 -}
 
@@ -60,7 +60,7 @@ spec = do
         prop "Infl Basic leaves relations of arbitrary SNModel unchanged" $ do
             \snm i1 -> inflNotChangeRel (i1::Double) (snm::SNModel)
         prop "Selec Basic leaves positions of agents of arbitrary SNModel unchanged" $ do
-            \snm i1 -> selecNotChangeDual (i1::Double) (snm::SNModel)
+            \snm i1 -> selecNotChangeDualVal (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel isn't affected by first of two consecutive selec operations" $ do
             \snm i1 i2 -> consecutiveSelec (snm::SNModel) (i1::Double) (i2::Double)
         prop "Arbitrary SNModel doesn't change with Infl Basic after a Selec Basic 1 (except for Infl 0)" $ do
@@ -86,7 +86,7 @@ spec = do
         prop "Infl Variant leaves relations of arbitrary SNModel unchanged" $ do
             \snm i1 -> inflVarNotChangeRel (i1::Double) (snm::SNModel)
         prop "Selec Variant leaves positions of agents of arbitrary SNModel unchanged" $ do
-            \snm i1 -> selecVarNotChangeDual (i1::Double) (snm::SNModel)
+            \snm i1 -> selecVarNotChangeDualVal (i1::Double) (snm::SNModel)
         prop "Arbitrary SNModel has reflexive relations after a variant selec operation" $ do
             \snm i1 -> selecMakesReflVariant (snm::SNModel) (i1::Double)
         prop "A Selec Variant operation on an arbitrary SNModel doesn't increases the number of reachable agents for any agent" $ do
@@ -127,10 +127,12 @@ SECTION: Syntax
     describe "Tests for Form generation" $ do
         prop "Checks that a generated formula never contains empty lists after Conj or Disj" $ do
             \f -> not $ containsEmpty (f::Form)
+        prop "Checks that a generated formula never contains too long lists after Conj or Disj" $ do
+            \f -> not $ containsLongList (f::Form)
         prop "Dummy to see what percentage of generated Forms simpifies to Top or Bot" $ do
             \f -> prop_trivialForm (f::Form)
         prop "Testing if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot" $ do
             \f -> topBotpurity (f::Form)
         prop "Testing if every Form is mode consistent" $ do
-            \f -> checkModeConsistent (f::Form)
+            \f -> isModeCons (f::Form)
 

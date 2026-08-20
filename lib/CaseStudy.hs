@@ -4,13 +4,13 @@ import SNModel
     ( val_t,
       Position(..),
       SNModel(SNM, rel, nrAgents, dualVal),
-      Topic(..), valToDual_t)
+      Topic(..), valToDualVal_t, Relation)
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , elements, generate, sublistOf, chooseInt)
 import Test.QuickCheck.Gen (genDouble)
-import SetTheory (Agent, Relation, sublistRec)
+import SetTheory (sublistRec)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.IntSet as IntSet
@@ -334,7 +334,7 @@ instance Arbitrary SNMCase where
         --takeFourthOne <- IntSet.fromList <$> sublistRec 70 ags
         let popular = S.empty--TODO continue here to get out the majority
         let val_t' = M.fromList [(ballot, takeBallot), (thirdOne, takeThirdOne)]
-        let dualVal' = M.singleton flight $ valToDual_t val_t'
+        let dualVal' = M.singleton flight $ valToDualVal_t val_t'
         return $ SNMCase (SNM totalNrAgs posMapFlight rel' dualVal') popular
 
 
@@ -603,7 +603,7 @@ runOne popStrat leaders snm   = Results avgPublic' avgLeaders' stab' finalDistri
 Input:
 Popularity Strategy
 List of leaders
-Dual_t: Dual of a specific topic
+DualVal_t: DualVal of a specific topic
 
 Output: New dualVal_t where the leaders have their new positions after intervention.
 -}

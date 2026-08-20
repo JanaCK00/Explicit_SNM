@@ -11,7 +11,6 @@ import Semantics
 import Test.QuickCheck
   (Property, classify, property, collect)
 import qualified Data.IntMap.Strict as IntMap
-import SetTheory(Relation, makeTransitive, makeReflexive)
 import qualified Data.IntSet as IntSet
 import qualified Data.Vector as V
 import Data.Set (Set)
@@ -28,26 +27,26 @@ taut = Disj [propo1, Neg propo1]
 
 
 --here to be falsified. checks if the dualVal always maps every agent
-fullDual :: SNModel -> Bool
-fullDual (SNM nrAgs' _ _ dualVal') = all (\dualVal_t -> IntMap.size dualVal_t == nrAgs') dualVal'
+fullDualVal :: SNModel -> Bool
+fullDualVal (SNM nrAgs' _ _ dualVal') = all (\dualVal_t -> IntMap.size dualVal_t == nrAgs') dualVal'
 
-fullDualBasicInfl :: Double -> SNModel -> Bool
-fullDualBasicInfl tau m = fullDual m' where
+fullDualValBasicInfl :: Double -> SNModel -> Bool
+fullDualValBasicInfl tau m = fullDualVal m' where
   m' = updInflBasic tau' m
   tau' = properTau tau
 
-fullDualBasicSelec :: Double -> SNModel -> Bool
-fullDualBasicSelec tau m = fullDual m' where
+fullDualValBasicSelec :: Double -> SNModel -> Bool
+fullDualValBasicSelec tau m = fullDualVal m' where
   m' = updSelecBasic tau' m
   tau' = properTau tau
 
-fullDualVariantInfl :: Double -> SNModel -> Bool
-fullDualVariantInfl tau m = fullDual m' where
+fullDualValVariantInfl :: Double -> SNModel -> Bool
+fullDualValVariantInfl tau m = fullDualVal m' where
   m' = updInflVariant tau' m
   tau' = properTau tau
 
-fullDualVariantSelec :: Double -> SNModel -> Bool
-fullDualVariantSelec tau m = fullDual m' where
+fullDualValVariantSelec :: Double -> SNModel -> Bool
+fullDualValVariantSelec tau m = fullDualVal m' where
   m' = updSelecVariant tau' m
   tau' = properTau tau
 
@@ -56,28 +55,28 @@ fullDualVariantSelec tau m = fullDual m' where
 
 
 --check if the dualVal doesn't maps an agent to an empty set
-nonEmptyDualmapping :: SNModel -> Bool
-nonEmptyDualmapping m = all noEmptyValue (dualVal m) where
+nonEmptyDualValmapping :: SNModel -> Bool
+nonEmptyDualValmapping m = all noEmptyValue (dualVal m) where
   noEmptyValue = IntMap.foldr (\x acc -> x /= S.empty && acc) True
 
 
-nonEmptyDualmappingBasicInfl :: Double -> SNModel -> Bool
-nonEmptyDualmappingBasicInfl tau m = nonEmptyDualmapping m' where
+nonEmptyDualValmappingBasicInfl :: Double -> SNModel -> Bool
+nonEmptyDualValmappingBasicInfl tau m = nonEmptyDualValmapping m' where
   tau'= properTau tau
   m' = updInflBasic tau' m
 
-nonEmptyDualmappingBasicSelec :: Double -> SNModel -> Bool
-nonEmptyDualmappingBasicSelec tau m = nonEmptyDualmapping m' where
+nonEmptyDualValmappingBasicSelec :: Double -> SNModel -> Bool
+nonEmptyDualValmappingBasicSelec tau m = nonEmptyDualValmapping m' where
   tau'= properTau tau
   m' = updSelecBasic tau' m
 
-nonEmptyDualmappingVariantInfl :: Double -> SNModel -> Bool
-nonEmptyDualmappingVariantInfl tau m = nonEmptyDualmapping m' where
+nonEmptyDualValmappingVariantInfl :: Double -> SNModel -> Bool
+nonEmptyDualValmappingVariantInfl tau m = nonEmptyDualValmapping m' where
   tau'= properTau tau
   m' = updInflVariant tau' m
 
-nonEmptyDualmappingVariantSelec :: Double -> SNModel -> Bool
-nonEmptyDualmappingVariantSelec tau m = nonEmptyDualmapping m' where
+nonEmptyDualValmappingVariantSelec :: Double -> SNModel -> Bool
+nonEmptyDualValmappingVariantSelec tau m = nonEmptyDualValmapping m' where
   tau'= properTau tau
   m' = updSelecVariant tau' m
 
@@ -159,6 +158,16 @@ containsEmpty (Impl f g) = containsEmpty f || containsEmpty g
 containsEmpty (Neg f) = containsEmpty f
 containsEmpty _ = False
 
+--check if a formula contains a list longer than 10 elements after Conj or Disj
+containsLongList :: Form -> Bool
+containsLongList (Conj xs) = length xs > 10 || any containsLongList xs
+containsLongList (Disj xs) = length xs > 10 || any containsLongList xs
+containsLongList (Infl _ _ f) = containsLongList f
+containsLongList (Selec _ _ f) = containsLongList f
+containsLongList (Impl f g) = containsLongList f || containsLongList g
+containsLongList (Neg f) = containsLongList f
+containsLongList _ = False
+
 
 --check if a simplified Form contains NO occurance of Top/Bot
 topBotFree :: Form -> Bool
@@ -223,8 +232,8 @@ inflNotChangeRel tau m = rel m == rel m' where
     m' = updInflBasic tau' m
     tau' = properTau tau
 
-selecNotChangeDual :: Double -> SNModel -> Bool
-selecNotChangeDual tau m = dualVal m == dualVal m' where
+selecNotChangeDualVal :: Double -> SNModel -> Bool
+selecNotChangeDualVal tau m = dualVal m == dualVal m' where
     m' = updSelecBasic tau' m
     tau' = properTau tau
 
@@ -234,8 +243,8 @@ inflVarNotChangeRel tau m = rel m == rel m' where
     m' = updInflVariant tau' m
     tau' = properTau tau
 
-selecVarNotChangeDual :: Double -> SNModel -> Bool
-selecVarNotChangeDual tau m = dualVal m == dualVal m' where
+selecVarNotChangeDualVal :: Double -> SNModel -> Bool
+selecVarNotChangeDualVal tau m = dualVal m == dualVal m' where
     m' = updSelecVariant tau' m
     tau' = properTau tau
 
@@ -270,10 +279,10 @@ exPaperstep1 = SNM 4 positions' rel' dualVal' where
   fRel = V.fromList [IntSet.fromList [0..3], IntSet.fromList [0,1], IntSet.fromList [0,2,3], IntSet.fromList [0,2,3]]
   mRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.fromList [1, 3], IntSet.fromList [0,2], IntSet.fromList [0,1,3]]
   sRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.singleton 1, IntSet.fromList [0,2, 3], IntSet.fromList [0,2,3]]
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.singleton (P 2)), (2, S.fromList [P 1, P 3, P 4]), (3, S.fromList [P 3,P 4])]
-  mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList [P 9, P 10])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.singleton (P 2)), (2, S.fromList [P 1, P 3, P 4]), (3, S.fromList [P 3,P 4])]
+  mDualVal = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList [P 9, P 10])]
 
 exPaperstep2 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
@@ -281,10 +290,10 @@ exPaperstep2 = SNM 4 positions' rel' dualVal' where
   fRel = V.fromList [IntSet.fromList [0..3], IntSet.fromList [0,1], IntSet.fromList [0,2,3], IntSet.fromList [0,2,3]]
   mRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.fromList [1, 3], IntSet.fromList [0,2], IntSet.fromList [0,1,3]]
   sRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.singleton 1, IntSet.fromList [0,2, 3], IntSet.fromList [0,2,3]]
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 3,P 4])]
-  mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 3,P 4])]
+  mDualVal = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
 
 exPaperstep3 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
@@ -292,10 +301,10 @@ exPaperstep3 = SNM 4 positions' rel' dualVal' where
   fRel = makeFullRel 4
   mRel = V.fromList [IntSet.fromList [0, 1, 2, 3], IntSet.fromList [0, 1, 3], IntSet.fromList [0,2], IntSet.fromList [0,1,3]]
   sRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.singleton 1, IntSet.fromList [0,2, 3], IntSet.fromList [0,2,3]]
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 3,P 4])]
-  mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 3,P 4])]
+  mDualVal = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
 
 exPaperstep4 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
@@ -303,10 +312,10 @@ exPaperstep4 = SNM 4 positions' rel' dualVal' where
   fRel = makeFullRel 4
   mRel = V.fromList [IntSet.fromList [0, 1, 2, 3], IntSet.fromList [0, 1, 3], IntSet.fromList [0,2], IntSet.fromList [0,1,3]]
   sRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.singleton 1, IntSet.fromList [0,2, 3], IntSet.fromList [0,2,3]]
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
-  mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1, S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
+  mDualVal = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1, S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
 
 exPaperstep5 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
@@ -314,10 +323,10 @@ exPaperstep5 = SNM 4 positions' rel' dualVal' where
   fRel = makeFullRel 4
   mRel = V.fromList [IntSet.fromList [0, 1, 3], IntSet.fromList [0, 1, 3], IntSet.singleton 2, IntSet.fromList [0,1,3]]
   sRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.singleton 1, IntSet.fromList [0,2, 3], IntSet.fromList [0,2,3]]
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
-  mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1, S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
+  mDualVal = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1, S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5,P 8]), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 12])]
 
 
 {-
@@ -335,10 +344,10 @@ exPaperVarstep2 = SNM 4 positions' rel' dualVal' where
   fRel = V.fromList [IntSet.fromList [0..3], IntSet.fromList [0,1], IntSet.fromList [0,2,3], IntSet.fromList [0,2,3]]
   mRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.fromList [1, 3], IntSet.fromList [0,2], IntSet.fromList [0,1,3]]
   sRel = V.fromList [IntSet.fromList [0, 2, 3], IntSet.singleton 1, IntSet.fromList [0,2, 3], IntSet.fromList [0,2,3]]
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
-  mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.singleton (P 5)), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11]), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
+  mDualVal = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.singleton (P 5)), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11]), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
 
 
 exPaperVarstep3 = SNM 4 positions' rel' dualVal' where
@@ -347,10 +356,10 @@ exPaperVarstep3 = SNM 4 positions' rel' dualVal' where
   fRel = makeFullRel 4
   mRel = makeFullRel 4
   sRel = makeFullRel 4
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
-  mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.singleton (P 5)), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11]), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
+  mDualVal = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.singleton (P 5)), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11]), (2, S.fromList [P 9, P 10, P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
 
 exPaperVarstep4 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
@@ -358,10 +367,10 @@ exPaperVarstep4 = SNM 4 positions' rel' dualVal' where
   fRel = makeFullRel 4
   mRel = makeFullRel 4
   sRel = makeFullRel 4
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
-  mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5, P 6, P 7]), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11,  P 12]), (2, S.fromList [P 9, P 10, P 11,  P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
+  mDualVal = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5, P 6, P 7]), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11,  P 12]), (2, S.fromList [P 9, P 10, P 11,  P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
 
 exPaperVarstep5 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
@@ -369,10 +378,10 @@ exPaperVarstep5 = SNM 4 positions' rel' dualVal' where
   fRel = makeFullRel 4
   mRel = makeFullRel 4
   sRel = makeFullRel 4
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
-  mDual = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5, P 6, P 7]), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11,  P 12]), (2, S.fromList [P 9, P 10, P 11,  P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.fromList [P 2, P 3, P 4]), (2, S.fromList [P 2, P 3, P 4]), (3, S.fromList [P 2, P 3, P 4])]
+  mDualVal = IntMap.fromList [(0, S.fromList [P 5, P 6, P 7]), (1,S.fromList [P 5, P 6, P 7]), (2, S.fromList [P 5, P 6, P 7]), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11,  P 12]), (1, S.fromList [P 9, P 10, P 11,  P 12]), (2, S.fromList [P 9, P 10, P 11,  P 12]), (3, S.fromList [P 9, P 10, P 11,  P 12])]
 
 {-
 Own example (interleaving of Variant Infl, Variant Selec)
@@ -445,48 +454,48 @@ exOwnstep0 = exampleLogicSection
 exOwnstep1 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
   rel' = M.fromList [(T 1, V.fromList [a, a, ad, a]), (T 2, V.fromList [a, b, c, d])]
-  dualVal' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
-  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.singleton (P 5)), (3, S.fromList [P 4, P 5])]
+  dualVal' = M.fromList [(T 1, bDualVal), (T 2, sDualVal)]
+  bDualVal = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
+  sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.singleton (P 5)), (3, S.fromList [P 4, P 5])]
 
 exOwnstep2 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
   rel' = M.fromList [(T 1, V.fromList [a, ab, cd, ad]), (T 2, V.fromList [a, b, cd, ad])]
-  dualVal' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
-  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.singleton (P 5)), (3, S.fromList [P 4, P 5])]
+  dualVal' = M.fromList [(T 1, bDualVal), (T 2, sDualVal)]
+  bDualVal = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
+  sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.singleton (P 5)), (3, S.fromList [P 4, P 5])]
 
 exOwnstep3 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
   rel' = M.fromList [(T 1, V.fromList [a, ab, cd, ad]), (T 2, V.fromList [a, b, cd, ad])]
-  dualVal' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 1, P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
-  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 4, P 5]), (3, S.fromList [P 4, P 5])]
+  dualVal' = M.fromList [(T 1, bDualVal), (T 2, sDualVal)]
+  bDualVal = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 1, P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
+  sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 4, P 5]), (3, S.fromList [P 4, P 5])]
 
 exOwnstep4 = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
   rel' = M.fromList [(T 1, V.fromList [a, ab, acd, ad]), (T 2, V.fromList [a, b, acd, ad])]
-  dualVal' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 1, P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
-  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 4, P 5]), (3, S.fromList [P 4, P 5])]
+  dualVal' = M.fromList [(T 1, bDualVal), (T 2, sDualVal)]
+  bDualVal = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.fromList [P 1, P 2]), (2, S.fromList [P 1, P 2, P 3]), (3, S.fromList [P 1,P 2,P 3])]
+  sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 4, P 5]), (3, S.fromList [P 4, P 5])]
 
 
 examplePaper :: SNModel
 examplePaper = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..4]), (T 2, S.fromList $ map P [5..8]), (T 3, S.fromList $ map P [9..12])]
   rel' = M.fromList $ zip (map T [1,2,3]) $ replicate 3 (makeEmptyRel 4)
-  dualVal' = M.fromList [(T 1, fDual), (T 2, mDual), (T 3, sDual)]
-  fDual = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.singleton (P 2)), (2, S.fromList [P 1, P 3, P 4]), (3, S.fromList [P 3,P 4])]
-  mDual = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
-  sDual = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList [P 9, P 10])]
+  dualVal' = M.fromList [(T 1, fDualVal), (T 2, mDualVal), (T 3, sDualVal)]
+  fDualVal = IntMap.fromList [(0, S.fromList [P 2, P 3, P 4]), (1, S.singleton (P 2)), (2, S.fromList [P 1, P 3, P 4]), (3, S.fromList [P 3,P 4])]
+  mDualVal = IntMap.fromList [(0, S.singleton (P 5)), (1,S.fromList [P 6, P 7]), (2, S.singleton (P 8)), (3, S.fromList [P 5, P 6, P 7])]
+  sDualVal = IntMap.fromList [(0, S.fromList [P 9, P 10, P 11, P 12]), (1, S.singleton (P 11)), (2, S.fromList [P 9, P 12]), (3, S.fromList [P 9, P 10])]
 
 exampleLogicSection :: SNModel
 exampleLogicSection = SNM 4 positions' rel' dualVal' where
   positions' = M.fromList [(T 1, S.fromList $ map P [1..3]), (T 2, S.fromList $ map P [4..6])]
   rel' = M.fromList [(T 1, V.fromList [a, a, ad, a]), (T 2, V.fromList [a, b, c, d])]
-  dualVal' = M.fromList [(T 1, bDual), (T 2, sDual)]
-  bDual = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.singleton (P 2)), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 2,P 3])]
-  sDual = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
+  dualVal' = M.fromList [(T 1, bDualVal), (T 2, sDualVal)]
+  bDualVal = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.singleton (P 2)), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 2,P 3])]
+  sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
 
 
 
