@@ -6,7 +6,6 @@ import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , sublistOf)
-import Test.QuickCheck.Gen (chooseInt)
 import qualified Data.Map.Strict as M
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
@@ -14,8 +13,8 @@ import qualified Data.Set as S -- Set is strict ;)
 
 import Data.Set (Set)
 import qualified Data.IntSet as IntSet
-import Data.IntSet (IntSet)
-import SetTheory
+import GenerationUtils
+import Types
 import qualified Data.Vector as V --vectors are 0-based!!
 import Data.Vector (Vector)
 import SMCDEL.Internal.Help (lfp)
@@ -25,63 +24,6 @@ import SMCDEL.Internal.Help (lfp)
 This module defines Social Networks Models.
 It also provides random generation of Social Networks Models.
 -}
-
-
-
-
-
-
-
---Given a Relation, make it reflexive.
-makeReflexive :: Relation -> Relation
-makeReflexive = V.imap IntSet.insert
-
-
-
---Given a Relation, make it symmetric.
-makeSymmetric :: Relation -> Relation
-makeSymmetric rel' = makeSym 0 (V.toList rel') rel' where
-  makeSym _ [] acc = acc
-  makeSym i (ifriends:rest) acc = makeSym (i+1) rest (V.imap addMe acc) where
-    addMe a f | a `IntSet.member` ifriends = IntSet.insert i f
-              | otherwise                 = f
-
-{-
-  Recursively make a given relation transitive. For each agent, given their current
-  friends group, add all agents reachable from any friend in their friends group
-  until a fixpoint is reached.
--}
-makeTransitive :: Relation -> Relation
-makeTransitive rel' = lfp makeTransOnce rel' where
-  makeTransOnce = V.map addRel
-  addRel val' = IntSet.unions [rel' V.! w | w <- IntSet.toList val'] `IntSet.union` val'
-
-combineRelation :: Relation -> Relation -> Relation
-combineRelation = V.zipWith IntSet.union
-
-{-
-Given a relation, check if it is symmetric.
--}
-isSym :: Relation -> Bool
-isSym rel' = rel' == makeSymmetric rel'
-
-
-{-
-Given a relation, check if it is reflexive.
--}
-isRefl :: Relation -> Bool
-isRefl = V.ifoldl' (\acc i friends -> acc && IntSet.member i friends) True
-
-
-{-
-Given a relation, check if there are no self-loops.
--}
-noSelfLoops :: Relation -> Bool
-noSelfLoops = V.ifoldl' (\acc i friends -> acc && IntSet.notMember i friends) True
-
-
-
-
 
 --------------------------------------------------------------------------------
 -- Definition of Social Networks Models
@@ -96,20 +38,6 @@ Social Networks Models are relational Kripke models, by definition with:
  - a binary relation for each topic (= social network).)
    (These don't have to satisfy any specific properties (such as symmetry or reflexivity).)
 -}
-
-
-{-
-Data representation for topics, positions, agents and relations.
--}
-newtype Topic = T Int deriving (Eq, Show, Ord)
-newtype Position = P Int deriving (Eq, Show, Ord)
-type Agent = Int
-type AgentSet = IntSet
-{-
-A Relation represents a directed binary relation in the form of a vector of adjacency sets.
-At the i-tn index we store the set of friends of agent i.
--}
-type Relation = Vector AgentSet
 
 
 {-

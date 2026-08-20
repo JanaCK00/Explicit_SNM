@@ -3,7 +3,7 @@ module Semantics where
 
 --TODO only necessary imports
 import Syntax ( Form(..), Mode(..), isInUpdateModeCons, simplify, getAgs, getTops, getPos)
-import SNModel ( SNModel(rel, dualVal, SNM, nrAgents, positions), Position, makeFullRelModel, Topic(..), isValidSNModel, Relation, makeTransitive, makeReflexive, combineRelation)
+import SNModel ( SNModel(rel, dualVal, SNM, nrAgents, positions), makeFullRelModel, isValidSNModel)
 import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -16,6 +16,7 @@ import Data.Vector (Vector)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as L
+import Types
 
 
 {-

@@ -3,9 +3,7 @@ version: 0.1.0.0
 synopsis: TODO
 description: TODO
 maintainer:
-  - David Quinn Alvarez <dqalombardi@proton.me> #TODO change?
-  - Paulius Skaisgiris <paulius.skaisgiris@gmail.com>
-  - Djanira dos Santos Gomes <djaniradsgomes@gmail.com>
+  - Catja Jana Käser catja.kaeser@gmx.ch
 category: Logic
 
 ghc-options: -Wall

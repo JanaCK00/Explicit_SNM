@@ -11,13 +11,14 @@ import Test.QuickCheck
 import qualified Data.List as L (groupBy, sortOn, nub)
 import SMCDEL.Internal.Help (lfp)
 import SNModel
-import SetTheory
+import GenerationUtils
 import Test.QuickCheck.Gen (genDouble, chooseInt)
 import Data.Containers.ListUtils (nubOrd)
 import qualified Data.IntSet as IntSet
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Map as M
+import Types
 
 
 

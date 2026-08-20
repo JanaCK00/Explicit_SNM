@@ -2,15 +2,14 @@ module CaseStudy where
 
 import SNModel
     ( val_t,
-      Position(..),
       SNModel(SNM, rel, nrAgents, dualVal),
-      Topic(..), valToDualVal_t, Relation)
+       valToDualVal_t)
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
   , elements, generate, sublistOf, chooseInt)
 import Test.QuickCheck.Gen (genDouble)
-import SetTheory (sublistRec)
+import GenerationUtils (sublistRec)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.IntSet as IntSet
@@ -28,6 +27,7 @@ import Debug.Trace (trace)
 import Data.Maybe (isNothing)
 
 import Syntax (Mode (Basic, Variant))
+import Types
 
 
 {-

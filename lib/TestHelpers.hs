@@ -16,6 +16,7 @@ import qualified Data.Vector as V
 import Data.Set (Set)
 import Data.IntSet (IntSet)
 import CaseStudy (stabCountSafe)
+import Types
 
 propo1 :: Form
 propo1 = Adopted 1 (P 1)
