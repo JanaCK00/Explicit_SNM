@@ -1,7 +1,7 @@
 module Types where
 import Data.IntSet (IntSet)
-import Data.Vector
 import qualified Data.Vector as V
+import Data.Vector (Vector)
 import qualified Data.IntSet as IntSet
 import SMCDEL.Internal.Help (lfp)
 
@@ -9,15 +9,15 @@ import SMCDEL.Internal.Help (lfp)
 
 {-
 This module defines types for topics, positions, agents and relations.
-It also provides some helper functions on Relations.
+It also provides some helper functions for Relations.
 -}
 
 
 {-
 Data representation for topics, positions, agents and relations.
 -}
-newtype Topic = T Int deriving (Eq, Show, Ord)
-newtype Position = P Int deriving (Eq, Show, Ord)
+newtype Topic = T Int deriving (Eq, Show, Ord, Read)
+newtype Position = P Int deriving (Eq, Show, Ord, Read)
 type Agent = Int
 type AgentSet = IntSet
 
@@ -73,4 +73,19 @@ isRefl = V.ifoldl' (\acc i friends -> acc && IntSet.member i friends) True
 noSelfLoops :: Relation -> Bool
 noSelfLoops = V.ifoldl' (\acc i friends -> acc && IntSet.notMember i friends) True
 
+
+{-
+Takes a number of agents and creates an empty Relation.
+Can be used for SNModel construction.
+-}
+makeEmptyRel :: Int -> Relation
+makeEmptyRel n = V.replicate n IntSet.empty
+
+
+{-
+Takes a number of agents and creates a full relation.
+Can be used for SNModel construction.
+-}
+makeFullRel :: Int -> Relation
+makeFullRel n = V.replicate n $ IntSet.fromList [0..(n-1)]
 

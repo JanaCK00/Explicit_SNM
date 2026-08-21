@@ -1,23 +1,22 @@
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module SNModel where
 
 import Test.QuickCheck
   ( Arbitrary (..)
-  , Gen
-  , sublistOf)
+  , Gen)
 import qualified Data.Map.Strict as M
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
-import qualified Data.Set as S -- Set is strict ;)
+import qualified Data.Set as S
 
 import Data.Set (Set)
 import qualified Data.IntSet as IntSet
 import GenerationUtils
 import Types
-import qualified Data.Vector as V --vectors are 0-based!!
-import Data.Vector (Vector)
-import SMCDEL.Internal.Help (lfp)
+import qualified Data.Vector as V
+import Text.Read (readMaybe)
 
 
 {-
@@ -52,7 +51,7 @@ Social Networks Models are represented using the data type SNModel, consisting o
 
 SNModels are assumed to follow the definition of Social Networks Models specified above.
 Additionally, the Topic (T 0) is reserved for internal use (see Semantics.hs).
-These restrictions aren't enforced in construction, but should be checked using the function TODO
+These restrictions aren't enforced in construction, but can be checked using the function (fst $ isValidSNModel)
 -}
 data SNModel = SNM
  { nrAgents :: Int
@@ -63,41 +62,136 @@ data SNModel = SNM
 
 
 
-{-
-For convenience, we provide a translation from the dual valuation to the valuation.
--}
+--TODO test
+
+--------------------------------------------------------------------------------
+-- Predicates for SNModel
+--------------------------------------------------------------------------------
 
 {-
-Input: SNModel
-Output: Valuation corresponding to the dualVal
+Checks if an SNModel is a valid Social Networks Model.
+If yes: Returns a tuple of (True, []) if it is valid.
+Otherwise: Returns a tuple of (False, xs), where xs is a list of error messages.
+-}
+isValidSNModel :: SNModel -> (Bool, [String])
+isValidSNModel snm = (isValid, errorList) where
+    errorList = map snd $ filter (not . fst) $ isValidSNModelList snm
+    isValid = null errorList
+
+
+isValidSNModelList :: SNModel -> [(Bool, String)]
+isValidSNModelList (SNM ags' pos' rel' dualVal') =
+  [ isValidnrAgents ags'
+  , isValidpositions pos'
+  , isValidRel ags' pos' rel'
+  , isValidDualVal ags' pos' dualVal']
+
+
+
+
+{-
+Checks if the provided number is a valid nrAgents for an SNModel.
+Returns a tuple of (predicate, error message).
+-}
+isValidnrAgents :: Int -> (Bool, String)
+isValidnrAgents n | n > 0 = (True, "")
+                  | otherwise = (False, "Invalid number of agents. You need at least one agent.")
+
+
+{-
+Checks if a provided map from Topics to Positions is a valid positions for an SNModel.
+Returns a tuple of (predicate, error message).
+-}
+isValidpositions :: M.Map Topic (Set Position) -> (Bool, String)
+isValidpositions pos' = (validPos, unlines errorList) where
+    errorList = map snd $ filter (not . fst) [validTs, validTps, disjoint]
+    validPos = null errorList
+    validTs = (M.size pos' > 0 && (T 0) `M.notMember` pos', "You need at least one topic (T 0 reserved).")
+    validTps = (not (any null pos') , "You need at least one position per topic.")
+    disjoint = (S.size (S.unions pos') == foldr ((+) . S.size) 0 pos', "Positions can't belong to more than one topic.")
+
+
+{-
+Checks if a provided map from Topics to Relations is a valid rel for an SNModel.
+Returns a tuple of (predicate, error message).
+-}
+isValidRel :: Int -> M.Map Topic (Set Position) -> M.Map Topic Relation -> (Bool, String)
+isValidRel ags' pos' rel' = (validRel, unlines errorList) where
+    errorList = map snd $ filter (not . fst) [validTops, validVecs, validAgs]
+    validRel = null errorList
+    validTops = (M.keys pos' == M.keys rel', "You have to enter a relation for each topic you defined (and no others).")
+    validVecs = (all (\v -> V.length v == ags') rel', "Not all of your relations have the right size.")
+    validAgs = (all (all (allElems (<= ags'))) rel', "Your relations contain agents that you haven't defined.")
+    allElems predicate ks = all predicate (IntSet.toList ks)
+
+
+{-
+Checks if a provided map from Topics to maps from Agennts to sets of Positions is a valid dualVal for an SNModel.
+Returns a tuple of (predicate, error message).
+-}
+isValidDualVal :: Int -> M.Map Topic (Set Position) -> M.Map Topic (IntMap (Set Position)) ->  (Bool, String)
+isValidDualVal ags' pos' dualVal' = (validDualVal, unlines errorList) where
+    errorList = map snd $ filter (not . fst) [validTops, validPos, validAgs]
+    validDualVal = null errorList
+    validTops = (M.keys pos' == M.keys dualVal', "You have to enter a dual valuation for each topic you defined (and no others).")
+    validPos = (allWithKey (\t iPs -> all (`S.isSubsetOf` (pos' M.! t)) iPs) dualVal', "Your dual valuation assigns positions that you haven't defined.")
+    validAgs = (all (\m -> maximum (IntMap.keys m) <= ags') dualVal', "Not valid. Your dualVal valuation contains agents that you haven't defined.")
+    allWithKey predicate = M.foldrWithKey (\k v acc -> predicate k v && acc) True
+
+
+--------------------------------------------------------------------------------
+-- Helpers for construction of SNModels
+--------------------------------------------------------------------------------
+
+
+{-
+Takes an SNModel and returns the valuation.
+
+Each Topic is mapped to a map from Positions to the set of Agents that have adopted that Position.
+Positions that are adopted by no Agent are not in the map.
 -}
 val :: SNModel -> M.Map Topic (M.Map Position AgentSet)
-val snm = M.fromList [(t, val_t snm t)| t <- topics] where
-  topics = M.keys $ positions snm
+val snm = dualValtoVal $ dualVal snm
 
 {-
-Input: SNModel, Topic
-Output: Valuation for the given Topic
+Taes an SNModel and a Topic and returns the valuation for that Topic.
 -}
-
---TODO test
---TODO I think positions that aren't taken by anyone won't be in the map at all
+{-# ANN val_t "HLint: ignore Use camelCase" #-}
 val_t :: SNModel -> Topic -> M.Map Position AgentSet
-val_t snm t =  M.fromListWith IntSet.union
+val_t snm t = dualValToVal_t $ dualVal' M.! t  where
+  dualVal' = dualVal snm
+
+
+{-
+Translation from dual valuation to valuation.
+-}
+dualValtoVal :: M.Map Topic (IntMap (Set Position)) -> M.Map Topic (M.Map Position AgentSet)
+dualValtoVal = M.map dualValToVal_t
+
+{-
+Translation from dual valuation for one topic to valuation for the topic.
+-}
+{-# ANN dualValToVal_t "HLint: ignore Use camelCase" #-}
+dualValToVal_t :: IntMap (Set Position) -> M.Map Position AgentSet
+dualValToVal_t dualVal_t =  M.fromListWith IntSet.union
     [ (p, IntSet.singleton i)
     | (i, ps) <- dualVal_t_list
     , p <- S.toList ps
     ] where
-  dualVal_t = dualVal snm M.! t
   dualVal_t_list =  IntMap.toList dualVal_t
 
 
---TODO test
 {-
-Input: Valuation for a specific topic.
-Output: Corresponding dualVal for that topic.
+Translation from valuation to dual valuation.
 Agents that don't hold any position of that topic don't appear in the map.
 -}
+valToDualVal :: M.Map Topic (M.Map Position AgentSet) -> M.Map Topic (IntMap (Set Position))
+valToDualVal = M.map valToDualVal_t
+
+{-
+Translation from valuation for one topic to dual valuation for the topic.
+-}
+{-# ANN valToDualVal_t "HLint: ignore Use camelCase" #-}
 valToDualVal_t :: M.Map Position AgentSet -> IntMap (Set Position)
 valToDualVal_t val_t' = IntMap.fromListWith S.union
     [ (i, S.singleton p)
@@ -108,138 +202,152 @@ valToDualVal_t val_t' = IntMap.fromListWith S.union
 
 
 
-
 {-
-Checks if an SNModel is a valid Social Networks Model.
+Interactive construction of valid SNModels.
+Will ask for user input for each component, feedback directly if the component is valid.
+Returns an SNModel after each component has been entered.
+
+Usage in ghci:
+myModel <- makeMyModel
+
+TODO can't handle backspace in input.
+
+TODO maybe make use of makeFullRel, makeEmptyRel
 -}
-isValidSNModel :: SNModel -> Bool
-isValidSNModel snm = all fst $ isValidSNModelList snm
+makeMyModel :: IO SNModel
+makeMyModel = do
+
+  --Ask for Agents.
+  ags' <- askUntilValid "Enter the number of agents:" isValidnrAgents
+
+  putStrLn $ "Your defined agents are [0.." ++ show (ags' - 1) ++ "] \n"
+
+  --Ask for Topics and Positions.
+  posInput <- askUntilValid
+        (unlines ["Enter topics and their positions."
+        , "Format: [(Topic, [Position])]"
+        , "Example: [(T 1, [P 1, P 2])]"])
+        (isValidpositions . toPositions)
+
+  let pos' = toPositions posInput
+  putStrLn $ "Your defined topics and positions are " ++ showPositions pos' ++ "\n"
+
+  --Ask for Relations.
+  --TODO maybe allow emptyRel, fullRel
+  relInput <- askUntilValid
+        (unlines
+        ["Enter the relation for each topic."
+        , "For each topic, give a list of friends for each agent. Agents with no friends get an empty list."
+        , "Format: [(Topic, [[Agent]])]"
+        , "Example: [(T 1, [[0,1], [0,1,2], []])]"])
+        (isValidRel ags' pos' . toRelations)
 
 
-isValidSNModelList :: SNModel -> [(Bool, String)]
-isValidSNModelList (SNM ags' pos' rel' dualVal') =
-  [ (isValidnrAgents ags' , "Invalid number of agents. You need at least one agent.")
-  , (isValidpositions pos', "Invalid topics/positions. You need at least one topic (T 0 reserved), and for each topic at least one position. \n Positions can't belong to more than one topic.")
-  , (M.keys pos' == M.keys rel' && M.keys pos' == M.keys dualVal', "Not valid. Your topics aren't consistent across maps.")
-  , (allWithKey (\t iPs -> all (`S.isSubsetOf` (pos' M.! t)) iPs) dualVal', "Not valid. Your dualVal valuation assigns positions that aren't consistent with the Topics/Positions map.")
-  , (not (any (any null) dualVal'), "Not valid. Agents that don't adopt any positions in a topic shouldn't be keys in the dualVal_t map.")
-  , (all (\v -> V.length v == ags') rel', "Not valid. Not all of your relations have the right size.")
-  , (all (all (allElems (<= ags'))) rel', "Not valid. Your relations contain agents that don't exist.")
-  , (all (\m -> maximum (IntMap.keys m) <= ags') dualVal', "Not valid. Your dualVal valuation contains agents that don't exist.")
-  ]
-  where
-    allElems predicate ks = all predicate (IntSet.toList ks)
-    allWithKey predicate = M.foldrWithKey (\k v acc -> predicate k v && acc) True
+  let rel' = toRelations relInput
 
+  --Ask for either dual valuation or valuation.
+  dualValOrVal <- askUntilValid
+    (unlines
+        [ "You can choose to enter either the dual valuation or the valuation."
+        , "Which one would you like to enter? Please enter your choice."
+        , "Format: DualVal or Val"
+        ])
+    (const (True, ""))
 
---Checks if the provided number is a valid nrAgents for an SNModel.
-isValidnrAgents :: Int -> Bool
-isValidnrAgents n = n > 0
+ --Ask for dual valuation.
+  dualVal' <- case dualValOrVal of
+    DualVal -> do
+        dualInput <- askUntilValid
+            (unlines
+                [ "Enter the positions adopted by the agents for each topic."
+                , "Agents with no adopted positions can be omitted."
+                , "Format: [(Topic, [(Agent, [Position])])]"
+                , "Example: [(T 1, [(0,[P 1]), (1,[P 1,P 2])])]"
+                ])
+            (isValidDualVal ags' pos' . toDualVal)
 
---Checks if a provided map from Topics to Positions is a valid positions for an SNModel.
-isValidpositions :: M.Map Topic (Set Position) -> Bool
-isValidpositions pos = M.size pos > 0
-  && (T 0) `M.notMember` pos
-  && not (any null pos)
-  && S.size (S.unions pos) == foldr ((+) . S.size) 0 pos
+        return $ toDualVal dualInput
+
+ --Ask for valuation.
+    Val -> do
+        valInput <- askUntilValid
+            (unlines
+                [ "Enter the valuation."
+                , "Format: [(Topic, [(Position, [Agent])])]"
+                , "Example: [(T 1, [(P 1, [0,1]), (P 2, [1])])]"
+                ])
+            (isValidDualVal ags' pos' . valToDualVal . toVal)
+
+        return $ valToDualVal (toVal valInput)
+
+ --Construct the SNModel.
+  let snm = SNM ags' pos' rel' dualVal'
+  let (validSNM, errorList) = isValidSNModel snm --This is just a safety double-check.
+  if not validSNM then error $ unlines errorList --Prints error messages, if SNModel is not valid.
+    else return snm
 
 
 
 
 {-
-Functions for random generation of components of SNModels.
-They use Lists instead of Sets for convenience, and because the sublist function would require list conversion anyway.
--}
+Helper function for interactive construction of SNModels. Will ask until the user has entered a valid input.
+Can handle both invalid format and invalid input as defined by the provided validPred.
 
-
-{-
 Input:
-nrAgs: Stands for agents [0..nrAgs-1].
-
-Output:
-Generates a random Relation between agents [0..nrAgs-1].
+prompt: The prompt displayed to the user.
+validPred: A function that checked whether the input is valid (and provides an errormessage if it isn't).
 -}
-randomRel :: Int -> Gen Relation
-randomRel nrAgs = do
-  list <- randomRelList nrAgs nrAgs
-  return $ V.fromList list
+askUntilValid :: Read a => String -> (a -> (Bool, String)) -> IO a
+askUntilValid prompt validPred = do
+  putStrLn prompt
+  input <- getLine
 
---second argument is the recursively decreasing one
-randomRelList :: Int -> Int -> Gen [AgentSet]
-randomRelList _ 0 = return []
-randomRelList nrAgs n = do
-    thisAgsFriends <- IntSet.fromList <$> sublistOf [0..nrAgs-1]
-    rest <- randomRelList nrAgs (n-1)
-    return $ thisAgsFriends:rest
+  case readMaybe input of
+    Nothing -> do
+      putStrLn "\n Invalid input format. Please try again. \n"
+      askUntilValid prompt validPred
 
+    Just x -> do
+      let (isValid, errorMsg) = validPred x
 
-{-
-Input:
-nrAgs: Stands for agents [0..nrAgs-1].
-tpcs: List of Topics (duplicate-free)
-
-Output:
-Generates an random relation for each topic and returns the corresponding map.
--}
-randomRelMap :: Int -> [Topic] -> Gen (M.Map Topic Relation)
-randomRelMap _ [] = return M.empty
-randomRelMap nrAgs (t:tpcs) =  do
-    thisTpcsRel <- randomRel nrAgs
-    rest <- randomRelMap nrAgs tpcs
-    return $ M.insert t thisTpcsRel rest
+      if isValid
+        then return x
+        else do
+          putStrLn $ "Invalid input." ++ errorMsg ++ "\n"
+          askUntilValid prompt validPred
 
 
-{-
-Input:
-pos: Set of Positions (assumed to belong to one topic)
-ags: List of Agents (duplicate free)
+--Translation from input format to component format.
+toPositions :: [(Topic, [Position])] -> M.Map Topic (S.Set Position)
+toPositions tps = M.map S.fromList (M.fromList tps)
 
-Output:
-Generates a random dualVal for one topic (Map from Agent to subset of those Positions) and returns the corresponding map.
--}
-randomDualValT :: Set Position -> [Agent] -> Gen (IntMap (Set Position))
-randomDualValT _ [] = return IntMap.empty
-randomDualValT pos (ag:ags) = do
-    thisAgsPos <- subsetOf pos
-    rest <- randomDualValT pos ags
-    if S.size thisAgsPos > 0 then --only include Agents in the map that take at least one position
-      return $ IntMap.insert ag thisAgsPos rest
-    else
-      return rest
+--Translation from input format to component format.
+toRelations :: [(Topic, [[Int]])] -> M.Map Topic Relation
+toRelations xs = M.map (V.fromList . map IntSet.fromList) $ M.fromList xs
+
+--Translation from input format to component format.
+toDualVal :: [(Topic, [(Int, [Position])])] -> M.Map Topic (IntMap.IntMap (S.Set Position))
+toDualVal = M.fromList  . map (\(t, ags) -> (t, IntMap.fromList
+            [ (a, S.fromList ps)
+            | (a, ps) <- ags
+            ]))
+
+--Translation from input format to component format.
+toVal :: [(Topic, [(Position , [Agent])])] -> M.Map Topic (M.Map Position IntSet.IntSet)
+toVal = M.fromList . map (\(t, ps) -> (t, M.fromList
+          [ (p, IntSet.fromList ags)
+          | (p, ags) <- ps
+          ]))
 
 
-{-
-Input:
-posMap: positions map (Topic to Set of Positions)
-ags: List of Agents
-
-Output:
-Applies randomDualValT for each topic and returns a randomly generated dualVal.
--}
-randomDualValMap :: M.Map Topic (Set Position) -> [Agent] -> Gen (M.Map Topic (IntMap (Set Position)))
-randomDualValMap posMap ags = traverse (`randomDualValT` ags) posMap
+--Used to give the option of entering either the dual valuation or the valuation.
+data RepType = DualVal | Val deriving (Eq, Ord, Show, Read)
 
 
 
-{-
-Input:
-ts: List of Topics
-ps: List of Positions
-(Assumptions: both duplicate free & non-empty, length ps>=length ts)
-
-Output:
-Generates a mapping from topics to sets of positions (pairwise disjoint, non-empty).
--}
-randomPosMap :: [Topic] -> [Position] -> Gen (M.Map Topic (Set Position))
-randomPosMap ts ps = do
-  partition <- randomPart (length ts) ps
-  return $ M.fromList $ zipWith (\t partP -> (t, S.fromList partP)) ts partition
-
-
-
-{-
-Random generation of SNModels.
--}
+--------------------------------------------------------------------------------
+-- Random generation of SNModels
+--------------------------------------------------------------------------------
 
 
 {-
@@ -257,15 +365,16 @@ generate (getRandomSNModel 5 [(T 1, [P 1, P 2]), (T 2, [P 3, P 4])])
 This example will generate a random SNModel with 5 agents and two topics having 2 positions each.
 -}
 getRandomSNModel :: Int -> [(Topic, [Position])] -> Gen SNModel
-getRandomSNModel n tps = do
-  let pos = M.map S.fromList $ M.fromList tps --make the input a Map
-  if not (isValidnrAgents n)
-    then error "Invalid number of agents. You need at least one agent."
-    else if not (isValidpositions pos)
-            then error "Invalid topics/positions. You need at least one topic (T 0 reserved), and for each topic at least one position. \n Positions can't belong to more than one topic."
-            else do dualVal' <- randomDualValMap pos [0..n-1]
-                    rel' <- randomRelMap n (M.keys pos)
-                    return $ SNM n pos rel' dualVal'
+getRandomSNModel n tps | not validAgs = error errorAgs
+                       | not validPos = error errorPos
+                       | otherwise = do
+                                     dualVal' <- randomDualValMap pos [0..n-1]
+                                     rel' <- randomRelMap n (M.keys pos)
+                                     return $ SNM n pos rel' dualVal'
+        where
+        pos = M.map S.fromList $ M.fromList tps --make the input a Map
+        (validPos, errorPos) = isValidpositions $ toPositions tps
+        (validAgs, errorAgs) = isValidnrAgents n
 
 
 {-
@@ -290,7 +399,17 @@ instance Arbitrary SNModel where
     randomDualVal <- randomDualValMap randomTPMap [0..defaultNrAgs-1]
     return (SNM defaultNrAgs randomTPMap randomRels randomDualVal)
 
+{-
+usage in ghci:
+import Test.QuickCheck
+myModel <- generate arbitrary :: IO SNModel
+-}
 
+
+
+--------------------------------------------------------------------------------
+-- Some helpers for SNModels
+--------------------------------------------------------------------------------
 
 
 {-
@@ -302,16 +421,6 @@ makeFullRelModel m@(SNM nrAgents' pos' _ _) = m { rel = fullRels } where
     fullRels = M.fromList $ map (, fullRel) (M.keys pos')
     fullRel = makeFullRel nrAgents'
 
-
-makeFullRel :: Int -> Relation
-makeFullRel n = V.replicate n $ IntSet.fromList [0..(n-1)]
-
-{-
-Takes a number of agents and creates an empty Relation.
-Can be used for SNModel construction.
--}
-makeEmptyRel :: Int -> Relation
-makeEmptyRel n = V.replicate n IntSet.empty
 
 {-
 Takes a SNModel and makes all its relations reflexive.
@@ -330,8 +439,10 @@ makeSymModel :: SNModel -> SNModel
 makeSymModel m@(SNM _ _ rel' _) = m {rel = M.map makeSymmetric rel'}
 
 
---TODO Achtung . - .
---Makes SNModels more readable in the console (works especially for smaller models).
+
+
+
+--Makes SNModels more readable in the console (especially for smaller models).
 instance Show SNModel where
     show snm = unlines
             [ ""
@@ -348,45 +459,24 @@ instance Show SNModel where
             , "Dual valuation:"
             , showDualVal (dualVal snm)
             ]
-      where
-        showPositions :: M.Map Topic (Set Position) -> String
-        showPositions =
-            unlines
-            . map (\(t, ps) -> show t ++ ": " ++ show (S.toList ps))
-            . M.toList
-
-        showRelations :: M.Map Topic Relation -> String
-        showRelations =
-            unlines
-            . map (\(t, r) -> show t ++ ":\n" ++ showRelation r)
-            . M.toList
-
-        showRelation :: Relation -> String
-        showRelation r =
-            unlines
-                [ show i ++ ": " ++ show (IntSet.toList neighbours)
-                | (i, neighbours) <- zip [0..] (V.toList r)
-                ]
-
-        showDualVal :: M.Map Topic (IntMap (Set Position)) -> String
-        showDualVal =
-            unlines
-            . map (\(t, d) -> show t ++ ":\n" ++ showDualVal_t d)
-            . M.toList
-
-        showDualVal_t :: IntMap (Set Position) -> String
-        showDualVal_t d =
-            unlines
-                [ show ag ++ ": " ++ show (S.toList ps)
-                | (ag, ps) <- IntMap.toList d
-                ]
 
 
-{-
-usage in ghci:
-import Test.QuickCheck
-myModel <- generate arbitrary :: IO SNModel
-generate (randomRel 4)
--}
+showPositions :: M.Map Topic (Set Position) -> String
+showPositions = unlines . map (\(t, ps) -> show t ++ ": " ++ show (S.toList ps)) . M.toList
+
+showRelations :: M.Map Topic Relation -> String
+showRelations = unlines . map (\(t, r) -> show t ++ ":\n" ++ showRelation r) . M.toList
+
+showRelation :: Relation -> String
+showRelation r = unlines [show i ++ ": " ++ show (IntSet.toList neighbours)
+                        | (i, neighbours) <- zip [0..] (V.toList r)]
+
+showDualVal :: M.Map Topic (IntMap (Set Position)) -> String
+showDualVal = unlines . map (\(t, d) -> show t ++ ":\n" ++ showDualVal_t d) . M.toList
+
+{-# ANN showDualVal_t "HLint: ignore Use camelCase" #-}
+showDualVal_t :: IntMap (Set Position) -> String
+showDualVal_t d = unlines [show ag ++ ": " ++ show (S.toList ps) | (ag, ps) <- IntMap.toList d]
+
 
 

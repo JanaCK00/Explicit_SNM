@@ -45,10 +45,10 @@ data Mode = Basic | Variant deriving (Eq, Show, Ord)
 
 {-
 Syntax of Social Network Logic
-A propositional language with two special atoms (Adopted and Connected) and four modal operators (parametrized by threshold):
+A propositional language with two special atoms (Adopted and Connected) and four modal operators (parametrized by threshold in [0,1]):
 
 (1) Infl Basic tau: Social Influence: Agents adopt positions per topic based on the proportion of
-    friens in that topic that hold each position.
+    friends in that topic that hold each position.
 (2) Selec Basic tau: Friendship selection: Agents choose friends per topic among the set of all agents
     based on the proportion of positions they agree on.
 (3) Infl Variant tau: Extended Social Influence: Agents adopt positions per topic based on the
@@ -60,7 +60,9 @@ A propositional language with two special atoms (Adopted and Connected) and four
 Forms are assumed to be at least in-update mode-consistent.
 This means, we expect any Form not to contain both Infl Basic and Infl Variant,
 as well as not to contain both Selec Basic and Selec Variant.
-This is not enforced in construction but should be checked using the function isInUpdateModeCons.
+Forms should also not contain modal operators with invalid thresholds (not in [0,1]).
+
+These restrictions are not enforced in construction but can be checked using the function isValidForm.
 -}
 data Form
   = Top                         -- True Constant
@@ -107,8 +109,33 @@ operatorList = flip (foldr ($))
 
 
 --------------------------------------------------------------------------------
--- Predicates about modes in Form
+-- Predicates for Form
 --------------------------------------------------------------------------------
+
+--Checks if a Form satisfies in-update mode-consistency and has all thresholds \in [0,1].
+isValidForm :: Form -> Bool
+isValidForm f = isInUpdateModeCons f && validTaus f
+
+
+--Checks if all threholds in a Form are \in [0,1].
+validTaus :: Form -> Bool
+validTaus f = all validTau $ getTaus f
+
+
+--Checks if d \in [0,1].
+validTau :: Double -> Bool
+validTau d = d >= 0 && d <= 1
+
+--Collects all threholds that occur in a Form.
+getTaus :: Form -> [Double]
+getTaus (Infl _ tau f) = tau : getTaus f
+getTaus (Selec _ tau f) = tau : getTaus f
+getTaus (Neg f) = getTaus f
+getTaus (Conj xs) = concatMap getTaus xs
+getTaus (Disj xs) = concatMap getTaus xs
+getTaus (Impl f g) = getTaus f ++ getTaus g
+getTaus _ = [] --includes Top, Bot, Adopted, Connected
+
 
 {-
 Returns a tuple of Lists of Modes that occur in the Form.
@@ -530,10 +557,12 @@ myModel = ...
 myForm <- generate (getRandomForm Basic myModel)
 -}
 getRandomFormModel :: Mode -> SNModel -> Gen Form
-getRandomFormModel mode snm = do
-  let ags = nrAgents snm
-  let posList =  M.toList $ M.map S.toList $ positions snm
-  getRandomForm mode ags posList
+getRandomFormModel mode snm | not validSNM  = error $ "Social Networks Model is not valid. \n" ++ unlines errorList
+                            | otherwise = do
+                                          let ags = nrAgents snm
+                                          let posList =  M.toList $ M.map S.toList $ positions snm
+                                          getRandomForm mode ags posList
+                             where (validSNM, errorList) = isValidSNModel snm
 
 
 {-
@@ -543,7 +572,7 @@ n: number of agents
 tps: list of tuples (Topic, [Position])
 
 Output:
-Returns a randomly generated, mode-consistent and simplified Form that matches the input.
+Returns a randomly generated, mode-consistent and simplified Form that matches the input, if the input is valid.
 This means, all Agents, Topics and Positions that occur in the random Form were part of the input.
 
 Example input in ghci:
@@ -551,10 +580,14 @@ import Test.QuickCheck
 myForm <- generate (getRandomForm Basic 5 [(T 1,[P 1, P 2]), (T 2, [P 3, P 4])])
 -}
 getRandomForm :: Mode -> Int -> [(Topic, [Position])] -> Gen Form
-getRandomForm mode n tps = simplify <$> randomForm arbA arbT arbP mode mode 10 --last parameter is a fixed, humanly readable size
+getRandomForm mode n tps | not validAgs = error errorAgs
+                         | not validPos = error errorPos
+                         | otherwise =  simplify <$> randomForm arbA arbT arbP mode mode 10 --last parameter is a fixed, humanly readable size
   where arbA = chooseInt (0, n-1)
         arbT = elements $ map fst tps
         arbP = elements $ concatMap snd tps
+        (validPos, errorPos) = isValidpositions $ toPositions tps
+        (validAgs, errorAgs) = isValidnrAgents n
 
 {-
 Adapted from Symbolic-Topo-E-Models.Syntax.

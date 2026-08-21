@@ -8,7 +8,7 @@ import SNModel
 import Semantics
 import TestHelpers
 import Syntax
-import SNModel (isValidSNModel)
+import SNModel (isValidSNModel, valToDualVal)
 
 spec :: Spec
 spec = do
@@ -20,21 +20,6 @@ spec = do
     {-
     will only be useful if I change generation away from using default sets
     -}
-    describe "Testing for non-empty sets" $ do
-        --prop "Arbitrary SNModel has non-empty set of agents"  $ do
-           -- \snm -> nonEmptyAgs (snm::SNModel)
-
-        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set" $ do
-            \snm -> nonEmptyDualValmapping (snm::SNModel)
-        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Basic Infl" $ do
-            \snm i1 -> nonEmptyDualValmappingBasicInfl (i1::Double) (snm::SNModel)
-        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Basic Selec" $ do
-            \snm i1 -> nonEmptyDualValmappingBasicSelec (i1::Double) (snm::SNModel)
-        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Variant Infl" $ do
-            \snm i1 -> nonEmptyDualValmappingVariantInfl (i1::Double) (snm::SNModel)
-        prop "Arbitrary SNModel has no dualVal mapping any agent to the empty set after Variant Selec" $ do
-            \snm i1 -> nonEmptyDualValmappingVariantSelec (i1::Double) (snm::SNModel)
-
 {- were all falsified, as expected :)
         prop "All SNModels map every agent in all dualVal_t (should be falsified)" $ do
             \snm -> fullDualVal (snm::SNModel)
@@ -53,8 +38,9 @@ spec = do
 
     describe "Testing if all properties are fulfilled" $ do
         prop "Arbitrary SNModel is a social networks model" $ do
-            \snm -> isValidSNModel (snm::SNModel)
-
+            \snm -> fst $ isValidSNModel (snm::SNModel)
+        prop "Translation between valuation and dual valuation works." $ do
+            \snm -> valToDualVal (val snm) == dualVal snm
 
     describe "Testing propoerties of basic update operations" $ do
         prop "Infl Basic leaves relations of arbitrary SNModel unchanged" $ do

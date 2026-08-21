@@ -2,8 +2,8 @@ module Semantics where
 
 
 --TODO only necessary imports
-import Syntax ( Form(..), Mode(..), isInUpdateModeCons, simplify, getAgs, getTops, getPos)
-import SNModel ( SNModel(rel, dualVal, SNM, nrAgents, positions), makeFullRelModel, isValidSNModel)
+import Syntax ( Form(..), Mode(..), isInUpdateModeCons, simplify, getAgs, getTops, getPos, validTaus)
+import SNModel ( SNModel(rel, dualVal, SNM, nrAgents, positions), makeFullRelModel, isValidSNModel, isValidSNModelList)
 import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -11,7 +11,7 @@ import Data.Set (Set)
 import qualified Data.IntSet as IntSet
 import qualified Data.Matrix as Mat
 import Data.Matrix (Matrix)
-import qualified Data.Vector as V
+import qualified Data.Vector as V --vectors are 0-based!
 import Data.Vector (Vector)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
@@ -32,13 +32,17 @@ Checks if the Form is in-update mode consistent. --TODO maybe change to mode-con
 Checks if the SNModel is valid.
 Checks if agents, topics and positions appearing in Form also appear in SNModel
 
-If all conditions hold, simplifies f and checks if f holds on snm.
+If all conditions hold, checks if f holds on snm.
 -}
 (*|=) :: SNModel -> Form -> Bool
 (*|=) snm f | not (isInUpdateModeCons f) = error "Formula is not at least in-operator mode-consistent." --TODO maybe change to mode-consistent?
-            | not (isValidSNModel snm)    = error "Social Networks Model is not valid."
-            | not (match snm f)           = error "Formula contains Agents, Topics or Positions that aren't present in the Social Networks Model."
-            | otherwise                   = snm |= simplify f
+            | not (validTaus f')         = error "Formula contains modal operators with invalid thresholds (not in [0,1])."
+            | not validSNM               = error $ "Social Networks Model is not valid. \n" ++ unlines errorList
+            | not (match snm f')         = error "Formula contains Agents, Topics or Positions that aren't present in the Social Networks Model."
+            | otherwise                  = snm |= f'
+        where f' = simplify f
+              (validSNM, errorList) = isValidSNModel snm
+
 
 
 match :: SNModel -> Form -> Bool
@@ -256,6 +260,7 @@ lookupDualVal :: IntMap.Key -> IntMap (Set a) -> Set a
 lookupDualVal = IntMap.findWithDefault S.empty
 
 {-
+TODO extend this
 usage in ghci
 examleSmall |=
 -}
