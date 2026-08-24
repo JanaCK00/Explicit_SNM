@@ -3,13 +3,10 @@ module TestHelpers where
 import Syntax
 import SNModel
 import qualified Data.Map.Strict as M
---import Data.Map.Strict ((!))
 import qualified Data.Set as S
---import Data.Set (Set)
---import Data.List as L
 import Semantics
 import Test.QuickCheck
-  (Property, classify, property, collect)
+  (Property, classify, property, collect, forAll)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.IntSet as IntSet
 import qualified Data.Vector as V
@@ -17,50 +14,42 @@ import Data.Set (Set)
 import Data.IntSet (IntSet)
 import CaseStudy (stabCountSafe)
 import Types
+import Test.QuickCheck.Gen
+import GenerationUtils (isOfSizeBetween, randomPosMap)
+
 
 propo1 :: Form
 propo1 = Adopted 1 (P 1)
 
 
---define some simple tautology
+--Defines a simple tautology.
 taut :: Form
 taut = Disj [propo1, Neg propo1]
 
 
---here to be falsified. checks if the dualVal always maps every agent
-fullDualVal :: SNModel -> Bool
-fullDualVal (SNM nrAgs' _ _ dualVal') = all (\dualVal_t -> IntMap.size dualVal_t == nrAgs') dualVal'
+{-
+Takes a double and determines a valid threshold using the following scheme:
 
-fullDualValBasicInfl :: Double -> SNModel -> Bool
-fullDualValBasicInfl tau m = fullDualVal m' where
-  m' = updInflBasic tau' m
-  tau' = properTau tau
+tauOut = abs tauIn - floor(abs tauIn)
+If tauIn is an odd integer, tauOut it 1 instead.
 
-fullDualValBasicSelec :: Double -> SNModel -> Bool
-fullDualValBasicSelec tau m = fullDualVal m' where
-  m' = updSelecBasic tau' m
-  tau' = properTau tau
+This is used so the arbitrary generation of Double can be used in tests.
+-}
 
-fullDualValVariantInfl :: Double -> SNModel -> Bool
-fullDualValVariantInfl tau m = fullDualVal m' where
-  m' = updInflVariant tau' m
-  tau' = properTau tau
-
-fullDualValVariantSelec :: Double -> SNModel -> Bool
-fullDualValVariantSelec tau m = fullDualVal m' where
-  m' = updSelecVariant tau' m
-  tau' = properTau tau
+properTau :: Double -> Double
+properTau tau
+    | fracPart == 0 && odd intPart     = 1
+    | otherwise                        = abs fracPart
+  where
+    (intPart, fracPart) = properFraction tau :: (Integer, Double)
 
 
-
-
-
---check if the dualVal doesn't maps an agent to an empty set
+--Checks if the dualVal doesn't map an agent to an empty set.
 nonEmptyDualValmapping :: SNModel -> Bool
 nonEmptyDualValmapping m = all noEmptyValue (dualVal m) where
   noEmptyValue = IntMap.foldr (\x acc -> x /= S.empty && acc) True
 
-
+--Checks if the update operations don't produce a broken dualVal.
 nonEmptyDualValmappingBasicInfl :: Double -> SNModel -> Bool
 nonEmptyDualValmappingBasicInfl tau m = nonEmptyDualValmapping m' where
   tau'= properTau tau
@@ -81,74 +70,66 @@ nonEmptyDualValmappingVariantSelec tau m = nonEmptyDualValmapping m' where
   tau'= properTau tau
   m' = updSelecVariant tau' m
 
---doesn't make sense if the topic isnt a field in positions
---check if the positions maps a topic to a set containing only positions of that topic
-{-validPositions :: SNModel -> Bool
-validPositions (SNM _ positions' _ _) =  all everyPos (M.toList positions') where
-    everyPos (tpc, pos) = all (\p -> posTopic p == tpc) pos
--}
 
-
-
-
---check if an application of Selec makes all relations reflexive
+--Checks if the basic friendship selection update makes all relations reflexive.
 selecMakesRefl :: SNModel -> Double -> Bool
 selecMakesRefl m d1 = upM == makeReflModel upM where
     upM = updSelecBasic d1' m
     d1' = properTau d1
 
---check if an application of Selec Variant makes all relations reflexive
+--Checks if the restricted friendship selection update makes all relations reflexive.
 selecMakesReflVariant :: SNModel -> Double -> Bool
 selecMakesReflVariant m d1 = upM == makeReflModel upM where
     upM = updSelecVariant d1' m
     d1' = properTau d1
 
 
---check if an application of Selec makes all relations symmetric
+--Checks if the basic friendship selection update makes all relations symmetric.
 selecMakesSym :: SNModel -> Double -> Bool
 selecMakesSym m d1 = updSelecBasic d1' m == makeSymModel (updSelecBasic d1' m) where
     d1' = properTau d1
 
---count how many steps until stable
---TODO does this work with the maybe returned in steps?
+--Counts how many iterations it takes for an Basic interleaving with constant tau to stabilize.
 prop_numberOfTurns :: Double -> SNModel -> Property
 prop_numberOfTurns tau m =
-    let steps = snd $ stabCountSafe 100 ((updInflBasic tau'). (updSelecBasic tau')) m
+    let steps = snd $ stabCountSafe 100 (updInflBasic tau' . updSelecBasic tau') m
         tau' = properTau tau in
         collect steps $
         property True
 
-
+--Counts how many iterations it takes for a Variant interleaving with constant tau to stabilize.
 prop_numberOfTurnsVariant :: Double -> SNModel -> Property
 prop_numberOfTurnsVariant tau m =
-    let steps = snd $ stabCountSafe 20 ((updInflVariant tau'). (updSelecVariant tau')) m
+    let steps = snd $ stabCountSafe 20 (updInflVariant tau'. updSelecVariant tau') m
         tau' = properTau tau in
         collect steps $
         property True
+
+
+
 
 {-
 SECTION Syntax
 -}
 
-
---checks if a Form evaluates to the same as its simplified version on a given SNModel
+--Checks if a Form evaluates to the same as its simplified version on a given SNModel.
 simplifyWorks :: SNModel -> Form -> Bool
 simplifyWorks m f = (m |= f) == (m |= simplify f)
 
 
---check if a formula simplifies to Top or Bot
+--Checks if a formula simplifies to Top or Bot.
 isTrivial :: Form -> Bool
 isTrivial f = f' == Top || f' == Bot where
     f' = simplify f
 
 
---Property to display percentage of generated Forms that are trivial
+--Property to display the percentage of generated Forms that simplify to Top or Bot.
 prop_trivialForm :: Form -> Property
 prop_trivialForm f =
   classify (isTrivial f) "simplifies to Top/Bot" $
     property True
 
---check if a formula contains empty lists after Conj or Disj
+--Checks if a formula contains empty lists after Conj or Disj.
 containsEmpty :: Form -> Bool
 containsEmpty (Conj xs) = null xs || any containsEmpty xs
 containsEmpty (Disj xs) = null xs || any containsEmpty xs
@@ -158,7 +139,7 @@ containsEmpty (Impl f g) = containsEmpty f || containsEmpty g
 containsEmpty (Neg f) = containsEmpty f
 containsEmpty _ = False
 
---check if a formula contains a list longer than 10 elements after Conj or Disj
+--Checks if a formula contains a list longer than 10 elements after Conj or Disj.
 containsLongList :: Form -> Bool
 containsLongList (Conj xs) = length xs > 10 || any containsLongList xs
 containsLongList (Disj xs) = length xs > 10 || any containsLongList xs
@@ -169,7 +150,7 @@ containsLongList (Neg f) = containsLongList f
 containsLongList _ = False
 
 
---check if a simplified Form contains NO occurance of Top/Bot
+--Checks if a simplified Form contains NO occurance of Top/Bot.
 topBotFree :: Form -> Bool
 topBotFree = allSubf freePred where
     freePred (Infl _ _ f)     = allSubf freePred f
@@ -178,33 +159,26 @@ topBotFree = allSubf freePred where
     freePred (Connected {}) = True
     freePred _ = False --Includes Top, Bot (plus for the sake of pattern exhaustion, all complex cases, but those should be handled by allSubf)
 
---check if every formula either simplifies to Top/Bot or simplifies to be free of any occurance of top/bot
+--Checks if every formula either simplifies to Top/Bot or simplifies to be free of any occurence of Top/Bot.
 topBotpurity :: Form -> Bool
 topBotpurity f = f' == Top || (f'== Bot || topBotFree f') where
     f' = simplify f
 
 
---check if for two consecutive Selecs, only the last applied matters
+--Checks if for two consecutive Selecs, only the last applied matters.
 consecutiveSelec :: SNModel -> Double -> Double -> Bool
 consecutiveSelec m d1 d2 = updSelecBasic d1' m == updSelecBasic d1' (updSelecBasic d2' m) where
     d1' = properTau d1
     d2' = properTau d2
 
-properTau :: Double -> Double
-properTau tau | isZeroFrac && odd intPart = 1
-              | otherwise                    = fracPart
-    where (intPart, fracPart) = properFraction tau
-          isZeroFrac = abs fracPart < epsilon
-          epsilon = 1e-12
 
-
---test if an Infl Basic after a Selec Basic 1 doesn't change anything
+--Checks if an Infl Basic after a Selec Basic 1 doesn't change anything, except for Infl Basic 0.
 consInflSelecOne :: SNModel -> Double  -> Bool
-consInflSelecOne m d1 = (updSelecBasic 1 m == updInflBasic d1' (updSelecBasic 1 m)) || d1' == 0.0 --(order is not accrordning to syntax ;))
+consInflSelecOne m d1 = (updSelecBasic 1 m == updInflBasic d1' (updSelecBasic 1 m)) || d1' == 0.0
     where d1' = properTau d1
 
 
---check if nr of reachable agents nerver grows for variant Selec
+--Checks if number of reachable agents never grows for Variant Selec.
 noGrowingReachable :: Double -> SNModel -> Bool
 noGrowingReachable tau m = reachUpdated `smallerEqualThan` reachOriginal where
     upM = updSelecVariant tau' m
@@ -213,12 +187,12 @@ noGrowingReachable tau m = reachUpdated `smallerEqualThan` reachOriginal where
     reachOriginal = transClosure $ rel m
     reachUpdated = transClosure $ rel upM
 
---check if friends in rel1 is subset of friends in rel2 for all agents
+--Checks if friends in rel1 is subset of friends in rel2 for all agents.
 smallerEqualThan :: Relation -> Relation -> Bool
 smallerEqualThan rel1 rel2 = (V.length rel1 == V.length rel2) && and (V.zipWith IntSet.isSubsetOf rel1 rel2)
 
 
---check if softer tau -> stronger tau leaves softer irrelevant
+--Checks if friendship selection with softer (=smaller) tau and then stronger (=bigger) tau leaves softer irrelevant.
 variantSelecGrowingTau :: Double -> Double ->  SNModel -> Bool
 variantSelecGrowingTau d1 d2 m | d1'<= d2' = updSelecVariant d2' (updSelecVariant d1' m) == updSelecVariant d2' m
                                | otherwise = variantSelecGrowingTau d2 d1 m
@@ -226,41 +200,37 @@ variantSelecGrowingTau d1 d2 m | d1'<= d2' = updSelecVariant d2' (updSelecVarian
     d1' = properTau d1
     d2' = properTau d2
 
-
+--Checks if a Basic Infl doesn't change the relation.
 inflNotChangeRel :: Double -> SNModel -> Bool
 inflNotChangeRel tau m = rel m == rel m' where
     m' = updInflBasic tau' m
     tau' = properTau tau
 
+--Checks if a Basic Selec doesn't change the dual valuation.
 selecNotChangeDualVal :: Double -> SNModel -> Bool
 selecNotChangeDualVal tau m = dualVal m == dualVal m' where
     m' = updSelecBasic tau' m
     tau' = properTau tau
 
-
+--Checks if a Variant Infl doesn't change the relation.
 inflVarNotChangeRel :: Double -> SNModel -> Bool
 inflVarNotChangeRel tau m = rel m == rel m' where
     m' = updInflVariant tau' m
     tau' = properTau tau
 
+--Checks if a Variant Selec doesn't change the dual valuation.
 selecVarNotChangeDualVal :: Double -> SNModel -> Bool
 selecVarNotChangeDualVal tau m = dualVal m == dualVal m' where
     m' = updSelecVariant tau' m
     tau' = properTau tau
 
 
-{-}
-was just to check, both have been falsified
-
-testmakeReflexive :: SNModel -> Bool
-testmakeReflexive (SNM nrAgents' _ rel' _) = trans == makeReflexive trans where
-    trans = makeTransitive $ combinedTopicsRel nrAgents' rel'
-
-testcombinedTopicsRel :: SNModel -> Bool
-testcombinedTopicsRel (SNM nrAgents' _ rel' _) = combo == makeReflexive combo where
-    combo = combinedTopicsRel nrAgents' rel'
-    -}
-
+--Checks if the function getRandomFormModel returns a well-formed form with the mode and matching the input SNModel.
+wellFormedRandomFormModel :: SNModel -> Property
+wellFormedRandomFormModel snm =
+    forAll (elements [Basic, Variant]) $ \mode ->
+    forAll (getRandomFormModel mode snm) $ \form ->
+        isWellFormedForm form && match snm form && ((mode == Basic && isBasicCons form)|| (mode == Variant && isVariantCons form))
 
 {-
 SECTION
@@ -387,9 +357,6 @@ exPaperVarstep5 = SNM 4 positions' rel' dualVal' where
 Own example (interleaving of Variant Infl, Variant Selec)
 -}
 
-{-
-some hardcoded examples
--}
 
 
 alice, bob, carol, david, emily :: Int
@@ -498,14 +465,29 @@ exampleLogicSection = SNM 4 positions' rel' dualVal' where
   sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
 
 
-
---TODO make one for each mistake?
---Some ill-formed SNModels to test the detection of their mistakes.
+--A small hardcoded example of an ill-formed SNModel.
 snmWrong :: SNModel
 snmWrong = SNM (-1) (M.fromList [(T 1, S.fromList [P 1]), (T 2, S.fromList [P 1, P 2])]) M.empty M.empty
 
 
---TODO add testing for semantics apart from the updates!!! some
---TOOD add testing for case study
+--Checks if the function getRandomFormModel returns a well-formed SNModel.
+wellFormedRandomSNModel :: Property
+wellFormedRandomSNModel =
+    forAll arbitraryWellFormedInput $ \(n, tps) ->
+        forAll (getRandomSNModel n tps) $ \snm ->
+            fst (isWellFormedSNModel snm)
+
+--Generates an arbitrary well-formed input for getRandomSNModel.
+arbitraryWellFormedInput :: Gen (Int, [(Topic, [Position])])
+arbitraryWellFormedInput = do
+    tpcs <- sublistOf (map T [1..nrTpcs]) `suchThat` (not . null)
+    pos <- sublistOf (map P [1..nrPosTotal]) `suchThat` isOfSizeBetween (length tpcs) nrPosTotal
+    n <- chooseInt (1, 100)
+    randomTPMap <- randomPosMap tpcs pos
+    let tps = M.toList $ M.map S.toList randomTPMap
+    return (n, tps)
+
+
+--TODO add testing for case study
 
 

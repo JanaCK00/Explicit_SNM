@@ -33,7 +33,6 @@ as well as for extended social influence and restricted friendship selection.
 
 
 {-
-TODO test
 Safe model checking function.
 
 Input:
@@ -59,7 +58,7 @@ myModel *|= myForm
 (*|=) :: SNModel -> Form -> Bool
 (*|=) snm f | not (isInUpdateModeCons f) = error "Formula is not at least in-operator mode-consistent."
             | not (validTaus f')         = error "Formula contains modal operators with invalid thresholds (not in [0,1])."
-            | not wellFormedSNM               = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
+            | not wellFormedSNM          = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
             | not (match snm f')         = error "Formula contains Agents, Topics or Positions that aren't defined in the Social Networks Model."
             | otherwise                  = snm |= f'
         where f' = simplify f
@@ -76,16 +75,16 @@ Checks if Agents, Topics and Positions occurring in f are all defined in snm and
 f can be checked on snm.
 -}
 match :: SNModel -> Form -> Bool
-match snm f = matchAg && matchTop && matchPos where
-    matchAg = maximum (IntSet.toList $ getAgs f) <= nrAgents snm
-    matchTop = getTops f `S.isSubsetOf` M.keysSet (positions snm)
+match snm f = matchAg && matchTops && matchPos where
+    matchAg | null ourAgs = True
+            | otherwise = maximum ourAgs <= nrAgents snm
+            where ourAgs = IntSet.toList $ getAgs f
+    matchTops = getTops f `S.isSubsetOf` M.keysSet (positions snm)
     matchPos = getPos f `S.isSubsetOf` M.foldr S.union S.empty (positions snm)
 
 
 
 {-
-TODO test
-
 Unsafe model checking function.
 ! Assumes a well-formed SNModel, and a well-formed and matching Form.
 ! Doesn't simplify the Form before checking.

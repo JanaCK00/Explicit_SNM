@@ -235,7 +235,7 @@ getTopsRec _ = [] --includes Top, Bot, Adopted
 
 
 
--- Returns the Set of Topics that occur in the Form.
+-- Returns the Set of Positions that occur in the Form.
 getPos :: Form -> Set Position
 getPos = S.fromList . getPosRec  --Set creation takes care of duplicates.
 
@@ -608,6 +608,8 @@ If the both provided modes are equal, the random Form will be mode-consistent.
   - doesn't include pure Top/Bot
   - avoids empty list for Conj/Disj
 Like this less than 30% of generated formulas evaluate to Top/Bot.
+
+For readability of the output, list length after Conj and Disj is restricted to a maximum of 10.
 -}
 randomForm :: Gen Int -> Gen Topic -> Gen Position -> Mode -> Mode -> Int -> Gen Form
 randomForm arbA arbT arbP _ _ 0 = oneof [ Adopted <$> arbA <*> arbP
@@ -616,7 +618,7 @@ randomForm arbA arbT arbP _ _ 0 = oneof [ Adopted <$> arbA <*> arbP
 randomForm arbA arbT arbP i s n = oneof [ Adopted <$> arbA <*> arbP
                     , Connected <$> arbT <*> arbA <*> arbA
                     , Neg <$> st
-                    , Conj <$> listOf st `suchThat` isOfSizeBetween 1 10 --restricts the list to a maximum of 10 elements
+                    , Conj <$> listOf st `suchThat` isOfSizeBetween 1 10
                     , Disj <$> listOf st `suchThat` isOfSizeBetween 1 10
                     , Impl <$> st <*> st
                     , Infl i <$> genDouble <*> st

@@ -61,9 +61,6 @@ data SNModel = SNM
  } deriving (Eq)
 
 
-
---TODO test
-
 --------------------------------------------------------------------------------
 -- Predicates for SNModel
 --------------------------------------------------------------------------------
@@ -95,7 +92,7 @@ Returns a tuple of (predicate, error message).
 -}
 isWellFormednrAgents :: Int -> (Bool, String)
 isWellFormednrAgents n | n > 0 = (True, "")
-                  | otherwise = (False, "Invalid number of agents. You need at least one agent.")
+                       | otherwise = (False, "Invalid number of agents. You need at least one agent.")
 
 
 {-
@@ -135,7 +132,7 @@ isWellFormedDualVal ags' pos' dualVal' = (wellFormedDualVal, unlines errorList) 
     wellFormedDualVal = null errorList
     wellFormedTops = (M.keys pos' == M.keys dualVal', "You have to enter a dual valuation for each topic you defined (and no others).")
     wellFormedPos = (allWithKey (\t iPs -> all (`S.isSubsetOf` (pos' M.! t)) iPs) dualVal', "Your dual valuation assigns positions that you haven't defined.")
-    wellFormedAgs = (all (\m -> maximum (IntMap.keys m) <= ags') dualVal', "Your dual valuation contains agents that you haven't defined.")
+    wellFormedAgs = (all (\m -> null m || maximum (IntMap.keys m) < ags') dualVal', "Your dual valuation contains agents that you haven't defined.")
     allWithKey predicate = M.foldrWithKey (\k v acc -> predicate k v && acc) True
 
 
@@ -467,7 +464,7 @@ showRelations = unlines . map (\(t, r) -> show t ++ ":\n" ++ showRelation r) . M
 
 showRelation :: Relation -> String
 showRelation r = unlines [show i ++ ": " ++ show (IntSet.toList neighbours)
-                        | (i, neighbours) <- zip [0..] (V.toList r)]
+                        | (i, neighbours) <- V.toList (V.indexed r)]
 
 showDualVal :: M.Map Topic (IntMap (Set Position)) -> String
 showDualVal = unlines . map (\(t, d) -> show t ++ ":\n" ++ showDualVal_t d) . M.toList

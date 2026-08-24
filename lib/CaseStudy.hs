@@ -330,7 +330,7 @@ instance Arbitrary SNMCase where
         let rel' = M.singleton flight flightRel
             ags = [0..totalNrAgs-1]
         takeBallot <- IntSet.fromList <$> sublistRec 60 ags
-        takeThirdOne <- IntSet.fromList <$> sublistRec 120 ags --TODO tweaking here
+        takeThirdOne <- IntSet.fromList <$> sublistRec 60 ags --TODO tweaking here
         --takeFourthOne <- IntSet.fromList <$> sublistRec 70 ags
         let popular = S.empty--TODO continue here to get out the majority
         let val_t' = M.fromList [(ballot, takeBallot), (thirdOne, takeThirdOne)]
@@ -341,7 +341,11 @@ instance Arbitrary SNMCase where
 getSNMCase :: Gen SNMCase
 getSNMCase = arbitrary
 
-
+{-
+Example usage in ghci:
+import Test.QuickCheck
+generate getSNMCase
+-}
 
 {-
 Input: SNmodel, Topic
