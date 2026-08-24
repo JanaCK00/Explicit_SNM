@@ -148,7 +148,6 @@ prop_trivialForm f =
   classify (isTrivial f) "simplifies to Top/Bot" $
     property True
 
-
 --check if a formula contains empty lists after Conj or Disj
 containsEmpty :: Form -> Bool
 containsEmpty (Conj xs) = null xs || any containsEmpty xs
@@ -501,7 +500,7 @@ exampleLogicSection = SNM 4 positions' rel' dualVal' where
 
 
 --TODO make one for each mistake?
---Some invalid SNModels to test the detection of their mistakes.
+--Some ill-formed SNModels to test the detection of their mistakes.
 snmWrong :: SNModel
 snmWrong = SNM (-1) (M.fromList [(T 1, S.fromList [P 1]), (T 2, S.fromList [P 1, P 2])]) M.empty M.empty
 

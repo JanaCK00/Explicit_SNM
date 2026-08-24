@@ -8,7 +8,7 @@ import SNModel
 import Semantics
 import TestHelpers
 import Syntax
-import SNModel (isValidSNModel, valToDualVal)
+import SNModel (isWellFormedSNModel, valToDualVal)
 
 spec :: Spec
 spec = do
@@ -38,7 +38,7 @@ spec = do
 
     describe "Testing if all properties are fulfilled" $ do
         prop "Arbitrary SNModel is a social networks model" $ do
-            \snm -> fst $ isValidSNModel (snm::SNModel)
+            \snm -> fst $ isWellFormedSNModel (snm::SNModel)
         prop "Translation between valuation and dual valuation works." $ do
             \snm -> valToDualVal (val snm) == dualVal snm
 
@@ -55,7 +55,7 @@ spec = do
             \snm i1 -> selecMakesRefl (snm::SNModel) (i1::Double)
         prop "Arbitrary SNModel has symmetric relations after selec operation" $ do
             \snm i1 -> selecMakesSym (snm::SNModel) (i1::Double)
-        prop "Dummy to see how many steps until stable in an interleavin of Basic Selec and Basic Infl" $ do
+        prop "Dummy to see how many steps until stable in an interleaving of Basic Selec and Basic Infl" $ do
             prop_numberOfTurns
         prop "Updates on Example 2 from paper Smets et al (2020) are correctly computed (SelecBasic, InflBasic)" $ do
             exPaperstep1 == updSelecBasic 0.5 exPaperstep0 &&

@@ -62,7 +62,7 @@ This means, we expect any Form not to contain both Infl Basic and Infl Variant,
 as well as not to contain both Selec Basic and Selec Variant.
 Forms should also not contain modal operators with invalid thresholds (not in [0,1]).
 
-These restrictions are not enforced in construction but can be checked using the function isValidForm.
+These restrictions are not enforced in construction but can be checked using the function isWellFormedForm.
 -}
 data Form
   = Top                         -- True Constant
@@ -113,8 +113,8 @@ operatorList = flip (foldr ($))
 --------------------------------------------------------------------------------
 
 --Checks if a Form satisfies in-update mode-consistency and has all thresholds \in [0,1].
-isValidForm :: Form -> Bool
-isValidForm f = isInUpdateModeCons f && validTaus f
+isWellFormedForm :: Form -> Bool
+isWellFormedForm f = isInUpdateModeCons f && validTaus f
 
 
 --Checks if all threholds in a Form are \in [0,1].
@@ -557,12 +557,12 @@ myModel = ...
 myForm <- generate (getRandomForm Basic myModel)
 -}
 getRandomFormModel :: Mode -> SNModel -> Gen Form
-getRandomFormModel mode snm | not validSNM  = error $ "Social Networks Model is not valid. \n" ++ unlines errorList
+getRandomFormModel mode snm | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
                             | otherwise = do
                                           let ags = nrAgents snm
                                           let posList =  M.toList $ M.map S.toList $ positions snm
                                           getRandomForm mode ags posList
-                             where (validSNM, errorList) = isValidSNModel snm
+                             where (wellFormedSNM, errorList) = isWellFormedSNModel snm
 
 
 {-
@@ -572,7 +572,7 @@ n: number of agents
 tps: list of tuples (Topic, [Position])
 
 Output:
-Returns a randomly generated, mode-consistent and simplified Form that matches the input, if the input is valid.
+Returns a randomly generated, mode-consistent and simplified Form that matches the input, if the input is well-formed.
 This means, all Agents, Topics and Positions that occur in the random Form were part of the input.
 
 Example input in ghci:
@@ -580,14 +580,14 @@ import Test.QuickCheck
 myForm <- generate (getRandomForm Basic 5 [(T 1,[P 1, P 2]), (T 2, [P 3, P 4])])
 -}
 getRandomForm :: Mode -> Int -> [(Topic, [Position])] -> Gen Form
-getRandomForm mode n tps | not validAgs = error errorAgs
-                         | not validPos = error errorPos
+getRandomForm mode n tps | not wellFormedAgs = error errorAgs
+                         | not wellFormedPos = error errorPos
                          | otherwise =  simplify <$> randomForm arbA arbT arbP mode mode 10 --last parameter is a fixed, humanly readable size
   where arbA = chooseInt (0, n-1)
         arbT = elements $ map fst tps
         arbP = elements $ concatMap snd tps
-        (validPos, errorPos) = isValidpositions $ toPositions tps
-        (validAgs, errorAgs) = isValidnrAgents n
+        (wellFormedPos, errorPos) = isWellFormedPositions $ toPositions tps
+        (wellFormedAgs, errorAgs) = isWellFormednrAgents n
 
 {-
 Adapted from Symbolic-Topo-E-Models.Syntax.

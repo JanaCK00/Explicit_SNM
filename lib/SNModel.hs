@@ -51,7 +51,7 @@ Social Networks Models are represented using the data type SNModel, consisting o
 
 SNModels are assumed to follow the definition of Social Networks Models specified above.
 Additionally, the Topic (T 0) is reserved for internal use (see Semantics.hs).
-These restrictions aren't enforced in construction, but can be checked using the function (fst $ isValidSNModel)
+These restrictions aren't enforced in construction, but can be checked using the function (fst $ isWellFormedSNModel)
 -}
 data SNModel = SNM
  { nrAgents :: Int
@@ -69,73 +69,73 @@ data SNModel = SNM
 --------------------------------------------------------------------------------
 
 {-
-Checks if an SNModel is a valid Social Networks Model.
-If yes: Returns a tuple of (True, []) if it is valid.
+Checks if an SNModel is a well-formed Social Networks Model.
+If yes: Returns a tuple of (True, []) if it is well-formed.
 Otherwise: Returns a tuple of (False, xs), where xs is a list of error messages.
 -}
-isValidSNModel :: SNModel -> (Bool, [String])
-isValidSNModel snm = (isValid, errorList) where
-    errorList = map snd $ filter (not . fst) $ isValidSNModelList snm
-    isValid = null errorList
+isWellFormedSNModel :: SNModel -> (Bool, [String])
+isWellFormedSNModel snm = (isWellFormed, errorList) where
+    errorList = map snd $ filter (not . fst) $ isWellFormedSNModelList snm
+    isWellFormed = null errorList
 
 
-isValidSNModelList :: SNModel -> [(Bool, String)]
-isValidSNModelList (SNM ags' pos' rel' dualVal') =
-  [ isValidnrAgents ags'
-  , isValidpositions pos'
-  , isValidRel ags' pos' rel'
-  , isValidDualVal ags' pos' dualVal']
+isWellFormedSNModelList :: SNModel -> [(Bool, String)]
+isWellFormedSNModelList (SNM ags' pos' rel' dualVal') =
+  [ isWellFormednrAgents ags'
+  , isWellFormedPositions pos'
+  , isWellFormedRel ags' pos' rel'
+  , isWellFormedDualVal ags' pos' dualVal']
 
 
 
 
 {-
-Checks if the provided number is a valid nrAgents for an SNModel.
+Checks if the provided number is a well-formed nrAgents for an SNModel.
 Returns a tuple of (predicate, error message).
 -}
-isValidnrAgents :: Int -> (Bool, String)
-isValidnrAgents n | n > 0 = (True, "")
+isWellFormednrAgents :: Int -> (Bool, String)
+isWellFormednrAgents n | n > 0 = (True, "")
                   | otherwise = (False, "Invalid number of agents. You need at least one agent.")
 
 
 {-
-Checks if a provided map from Topics to Positions is a valid positions for an SNModel.
+Checks if a provided map from Topics to Positions is a well-formed positions for an SNModel.
 Returns a tuple of (predicate, error message).
 -}
-isValidpositions :: M.Map Topic (Set Position) -> (Bool, String)
-isValidpositions pos' = (validPos, unlines errorList) where
-    errorList = map snd $ filter (not . fst) [validTs, validTps, disjoint]
-    validPos = null errorList
-    validTs = (M.size pos' > 0 && (T 0) `M.notMember` pos', "You need at least one topic (T 0 reserved).")
-    validTps = (not (any null pos') , "You need at least one position per topic.")
+isWellFormedPositions :: M.Map Topic (Set Position) -> (Bool, String)
+isWellFormedPositions pos' = (wellFormedPos, unlines errorList) where
+    errorList = map snd $ filter (not . fst) [wellFormedTs, wellFormedTps, disjoint]
+    wellFormedPos = null errorList
+    wellFormedTs = (M.size pos' > 0 && (T 0) `M.notMember` pos', "You need at least one topic (T 0 reserved).")
+    wellFormedTps = (not (any null pos') , "You need at least one position per topic.")
     disjoint = (S.size (S.unions pos') == foldr ((+) . S.size) 0 pos', "Positions can't belong to more than one topic.")
 
 
 {-
-Checks if a provided map from Topics to Relations is a valid rel for an SNModel.
+Checks if a provided map from Topics to Relations is a well-formed rel for an SNModel.
 Returns a tuple of (predicate, error message).
 -}
-isValidRel :: Int -> M.Map Topic (Set Position) -> M.Map Topic Relation -> (Bool, String)
-isValidRel ags' pos' rel' = (validRel, unlines errorList) where
-    errorList = map snd $ filter (not . fst) [validTops, validVecs, validAgs]
-    validRel = null errorList
-    validTops = (M.keys pos' == M.keys rel', "You have to enter a relation for each topic you defined (and no others).")
-    validVecs = (all (\v -> V.length v == ags') rel', "Not all of your relations have the right size.")
-    validAgs = (all (all (allElems (<= ags'))) rel', "Your relations contain agents that you haven't defined.")
+isWellFormedRel :: Int -> M.Map Topic (Set Position) -> M.Map Topic Relation -> (Bool, String)
+isWellFormedRel ags' pos' rel' = (wellFormedRel, unlines errorList) where
+    errorList = map snd $ filter (not . fst) [wellFormedTops, wellFormedVecs, wellFormedAgs]
+    wellFormedRel = null errorList
+    wellFormedTops = (M.keys pos' == M.keys rel', "You have to enter a relation for each topic you defined (and no others).")
+    wellFormedVecs = (all (\v -> V.length v == ags') rel', "Not all of your relations have the right size.")
+    wellFormedAgs = (all (all (allElems (<= ags'))) rel', "Your relations contain agents that you haven't defined.")
     allElems predicate ks = all predicate (IntSet.toList ks)
 
 
 {-
-Checks if a provided map from Topics to maps from Agennts to sets of Positions is a valid dualVal for an SNModel.
+Checks if a provided map from Topics to maps from Agennts to sets of Positions is a well-formed dualVal for an SNModel.
 Returns a tuple of (predicate, error message).
 -}
-isValidDualVal :: Int -> M.Map Topic (Set Position) -> M.Map Topic (IntMap (Set Position)) ->  (Bool, String)
-isValidDualVal ags' pos' dualVal' = (validDualVal, unlines errorList) where
-    errorList = map snd $ filter (not . fst) [validTops, validPos, validAgs]
-    validDualVal = null errorList
-    validTops = (M.keys pos' == M.keys dualVal', "You have to enter a dual valuation for each topic you defined (and no others).")
-    validPos = (allWithKey (\t iPs -> all (`S.isSubsetOf` (pos' M.! t)) iPs) dualVal', "Your dual valuation assigns positions that you haven't defined.")
-    validAgs = (all (\m -> maximum (IntMap.keys m) <= ags') dualVal', "Not valid. Your dualVal valuation contains agents that you haven't defined.")
+isWellFormedDualVal :: Int -> M.Map Topic (Set Position) -> M.Map Topic (IntMap (Set Position)) ->  (Bool, String)
+isWellFormedDualVal ags' pos' dualVal' = (wellFormedDualVal, unlines errorList) where
+    errorList = map snd $ filter (not . fst) [wellFormedTops, wellFormedPos, wellFormedAgs]
+    wellFormedDualVal = null errorList
+    wellFormedTops = (M.keys pos' == M.keys dualVal', "You have to enter a dual valuation for each topic you defined (and no others).")
+    wellFormedPos = (allWithKey (\t iPs -> all (`S.isSubsetOf` (pos' M.! t)) iPs) dualVal', "Your dual valuation assigns positions that you haven't defined.")
+    wellFormedAgs = (all (\m -> maximum (IntMap.keys m) <= ags') dualVal', "Your dual valuation contains agents that you haven't defined.")
     allWithKey predicate = M.foldrWithKey (\k v acc -> predicate k v && acc) True
 
 
@@ -203,22 +203,20 @@ valToDualVal_t val_t' = IntMap.fromListWith S.union
 
 
 {-
-Interactive construction of valid SNModels.
-Will ask for user input for each component, feedback directly if the component is valid.
+Interactive construction of well-formed SNModels.
+Will ask for user input for each component, feedback directly if the component is well-formed.
 Returns an SNModel after each component has been entered.
 
 Usage in ghci:
 myModel <- makeMyModel
 
 TODO can't handle backspace in input.
-
-TODO maybe make use of makeFullRel, makeEmptyRel
 -}
 makeMyModel :: IO SNModel
 makeMyModel = do
 
   --Ask for Agents.
-  ags' <- askUntilValid "Enter the number of agents:" isValidnrAgents
+  ags' <- askUntilValid "Enter the number of agents:" isWellFormednrAgents
 
   putStrLn $ "Your defined agents are [0.." ++ show (ags' - 1) ++ "] \n"
 
@@ -227,20 +225,20 @@ makeMyModel = do
         (unlines ["Enter topics and their positions."
         , "Format: [(Topic, [Position])]"
         , "Example: [(T 1, [P 1, P 2])]"])
-        (isValidpositions . toPositions)
+        (isWellFormedPositions . toPositions)
 
   let pos' = toPositions posInput
   putStrLn $ "Your defined topics and positions are " ++ showPositions pos' ++ "\n"
 
   --Ask for Relations.
-  --TODO maybe allow emptyRel, fullRel
+  --TODO maybe allow emptyRel, fullRel?
   relInput <- askUntilValid
         (unlines
         ["Enter the relation for each topic."
         , "For each topic, give a list of friends for each agent. Agents with no friends get an empty list."
         , "Format: [(Topic, [[Agent]])]"
         , "Example: [(T 1, [[0,1], [0,1,2], []])]"])
-        (isValidRel ags' pos' . toRelations)
+        (isWellFormedRel ags' pos' . toRelations)
 
 
   let rel' = toRelations relInput
@@ -264,7 +262,7 @@ makeMyModel = do
                 , "Format: [(Topic, [(Agent, [Position])])]"
                 , "Example: [(T 1, [(0,[P 1]), (1,[P 1,P 2])])]"
                 ])
-            (isValidDualVal ags' pos' . toDualVal)
+            (isWellFormedDualVal ags' pos' . toDualVal)
 
         return $ toDualVal dualInput
 
@@ -276,45 +274,45 @@ makeMyModel = do
                 , "Format: [(Topic, [(Position, [Agent])])]"
                 , "Example: [(T 1, [(P 1, [0,1]), (P 2, [1])])]"
                 ])
-            (isValidDualVal ags' pos' . valToDualVal . toVal)
+            (isWellFormedDualVal ags' pos' . valToDualVal . toVal)
 
         return $ valToDualVal (toVal valInput)
 
  --Construct the SNModel.
   let snm = SNM ags' pos' rel' dualVal'
-  let (validSNM, errorList) = isValidSNModel snm --This is just a safety double-check.
-  if not validSNM then error $ unlines errorList --Prints error messages, if SNModel is not valid.
+  let (wellFormedSNM, errorList) = isWellFormedSNModel snm --This is just a safety double-check.
+  if not wellFormedSNM then error $ unlines errorList --Prints error messages, if SNModel is not well-formed.
     else return snm
 
 
 
 
 {-
-Helper function for interactive construction of SNModels. Will ask until the user has entered a valid input.
-Can handle both invalid format and invalid input as defined by the provided validPred.
+Helper function for interactive construction of SNModels. Will ask until the user has entered a well-formed input.
+Can handle both invalid format and ill-formed input as defined by the provided wellFormedPred.
 
 Input:
 prompt: The prompt displayed to the user.
-validPred: A function that checked whether the input is valid (and provides an errormessage if it isn't).
+wellFormedPred: A function that checked whether the input is well-formed (and provides an errormessage if it isn't).
 -}
 askUntilValid :: Read a => String -> (a -> (Bool, String)) -> IO a
-askUntilValid prompt validPred = do
+askUntilValid prompt wellFormedPred = do
   putStrLn prompt
   input <- getLine
 
   case readMaybe input of
     Nothing -> do
       putStrLn "\n Invalid input format. Please try again. \n"
-      askUntilValid prompt validPred
+      askUntilValid prompt wellFormedPred
 
     Just x -> do
-      let (isValid, errorMsg) = validPred x
+      let (isWellFormed, errorMsg) = wellFormedPred x
 
-      if isValid
+      if isWellFormed
         then return x
         else do
-          putStrLn $ "Invalid input." ++ errorMsg ++ "\n"
-          askUntilValid prompt validPred
+          putStrLn $ "Ill-formed input." ++ errorMsg ++ "\n"
+          askUntilValid prompt wellFormedPred
 
 
 --Translation from input format to component format.
@@ -356,7 +354,7 @@ n: number of agents
 tps: a list of tuples (Topic, [Position])
 
 Output:
-Returns a randomly generated SNmodel if the input is valid.
+Returns a randomly generated SNmodel if the input is well-formed.
 
 Example input in ghci:
 import Test.QuickCheck
@@ -365,16 +363,16 @@ generate (getRandomSNModel 5 [(T 1, [P 1, P 2]), (T 2, [P 3, P 4])])
 This example will generate a random SNModel with 5 agents and two topics having 2 positions each.
 -}
 getRandomSNModel :: Int -> [(Topic, [Position])] -> Gen SNModel
-getRandomSNModel n tps | not validAgs = error errorAgs
-                       | not validPos = error errorPos
+getRandomSNModel n tps | not wellFormedAgs = error errorAgs
+                       | not wellFormedPos = error errorPos
                        | otherwise = do
                                      dualVal' <- randomDualValMap pos [0..n-1]
                                      rel' <- randomRelMap n (M.keys pos)
                                      return $ SNM n pos rel' dualVal'
         where
         pos = M.map S.fromList $ M.fromList tps --make the input a Map
-        (validPos, errorPos) = isValidpositions $ toPositions tps
-        (validAgs, errorAgs) = isValidnrAgents n
+        (wellFormedPos, errorPos) = isWellFormedPositions $ toPositions tps
+        (wellFormedAgs, errorAgs) = isWellFormednrAgents n
 
 
 {-
