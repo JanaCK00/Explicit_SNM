@@ -12,7 +12,6 @@ import qualified Data.IntSet as IntSet
 import qualified Data.Vector as V
 import Data.Set (Set)
 import Data.IntSet (IntSet)
-import CaseStudy (stabCountSafe)
 import Types
 import Test.QuickCheck.Gen
 import GenerationUtils (isOfSizeBetween, randomPosMap)
@@ -411,7 +410,10 @@ abc = IntSet.fromList [alice, bob, carol]
 d = IntSet.singleton david
 ad = IntSet.fromList [alice, david]
 acd = IntSet.fromList [alice, carol, david]
-
+bcd :: IntSet
+bcd = IntSet.fromList [bob, carol, david]
+abd :: IntSet
+abd = IntSet.fromList [alice, bob, david]
 
 
 exOwnstep0, exOwnstep1, exOwnstep2,exOwnstep3, exOwnstep4 :: SNModel
@@ -463,6 +465,14 @@ exampleLogicSection = SNM 4 positions' rel' dualVal' where
   dualVal' = M.fromList [(T 1, bDualVal), (T 2, sDualVal)]
   bDualVal = IntMap.fromList [(0, S.fromList [P 1, P 2]), (1, S.singleton (P 2)), (2, S.fromList [P 2, P 3]), (3, S.fromList [P 2,P 3])]
   sDualVal = IntMap.fromList [(0, S.singleton (P 4)), (1,S.fromList [P 4, P 5, P 6]), (2, S.fromList [P 5, P 6]), (3, S.singleton (P 5))]
+
+
+exampleOscillate :: SNModel
+exampleOscillate = SNM 4 positions' rel' dualVal' where
+  positions' = M.fromList [(T 1, S.fromList $ map P [1..6])]
+  rel' = M.fromList [(T 1, V.fromList [acd, bcd, abc, abd])]
+  dualVal' = M.fromList [(T 1, bDualVal)]
+  bDualVal = IntMap.fromList [(1, S.fromList [P 3, P 4, P 5, P 6]), (2, S.fromList [P 1, P 5, P 6]), (3, S.fromList [P 1,P 3, P 4])]
 
 
 --A small hardcoded example of an ill-formed SNModel.

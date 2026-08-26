@@ -30,23 +30,6 @@ import Syntax (Mode (Basic, Variant))
 import Types
 
 
-{-
-Input:
-maxIter: maximum number of iterations
-f: function (endomorphism)
-
-Output:
-Returns the function that will apply f until the output is stable or the maximum number of iterations has been reached.
-Then it will return a tuple of (stabilized output, number of iterations it took until stable).
-If stabilization wasn't reached in maxIter rounds, Nothing is returned for the number of iterations.
--}
-stabCountSafe :: Eq a => Int -> (a -> a) -> a -> (a, Maybe Int)
-stabCountSafe maxIter f = go 0 where
-    go k current | k >= maxIter  = (current, Nothing)
-                 | x' == current = (current, Just k)
-                 | otherwise     = go (k + 1) x'
-      where
-        x' = f current
 
 {-
 Define necessary Topics, Positions, Maps and Sets of Positions for the case study.
@@ -361,23 +344,6 @@ posDistribution_t snm t =  M.map (\s -> fromIntegral (IntSet.size s) / fromInteg
 --TODO test
 
 
-{-
-Input:
-Mode of Selec
-Mode of Infl
-SNM
-
-Output:
-SNM after stabilization of the interleaving
-Number of iterations until stabilization
-If no stabilization was reached after 20 steps, Nothing is returned instead of the number.
--}
-interleave :: Mode -> Mode -> SNModel -> (SNModel, Maybe Int)
-interleave Basic Basic      = stabCountSafe 20 (updSelecBasic threshold . updInflBasic threshold)
-interleave Basic Variant    = stabCountSafe 20 (updSelecBasic threshold . updInflVariant threshold)
-interleave Variant Basic    = stabCountSafe 20 (updSelecVariant threshold . updInflBasic threshold)
-interleave Variant Variant  = stabCountSafe 20 (updSelecVariant threshold . updInflVariant threshold)
-
 
 {-
 Input:
@@ -590,7 +556,7 @@ runOne :: PopularStrat -> [Int] -> SNModel -> Results
 runOne popStrat leaders snm   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
     interveneSNM              = snm {dualVal = M.singleton flight (intervention popStrat leaders dualVal_flight)}
     (avgPublic', avgLeaders') = averageDegrees flightRel leaders
-    (finalModel , stab'')     = interleave Variant Basic interveneSNM
+    (finalModel , stab'')     = interleave Variant Basic threshold interveneSNM
     finalDistribution         = posDistribution_t finalModel flight
     flightRel                 = rel snm M.! flight
     stab'                     = fromIntegral <$> stab''

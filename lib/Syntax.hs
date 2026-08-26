@@ -314,7 +314,7 @@ simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
 
 {-
-Eliminate modal operators on Bot or Top. Follows from recursion axioms.
+Eliminate modal operators on Bot or Top. Follows from recursion axioms, proved as a theorem.
 -}
 simStep (Infl _ _ Bot)  = Bot
 simStep (Infl _ _ Top)  = Top
@@ -334,7 +334,7 @@ Selec Basic:
 
 Selec Varinat:
 (1) Selec Variant does not impact the valuation.
-    Twp Selec Variant in a row with increasing or constant tau leave the first applied irrelevant.
+    Two Selec Variant in a row with increasing or constant tau leave the first applied irrelevant.
     Therefore, if we only check a boolean combination of Adopted and stricter/equal Selec Variant (no softer Selec Variant, no Connected),
     we can eliminate the outer Selec Variant.
 -}

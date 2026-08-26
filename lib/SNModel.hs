@@ -276,7 +276,8 @@ makeMyModel = do
         return $ valToDualVal (toVal valInput)
 
  --Construct the SNModel.
-  let snm = SNM ags' pos' rel' dualVal'
+  let dualVal'' = M.filter (not . null) dualVal' --remove entries in dual valuation that explicitely assign the empty set
+  let snm = SNM ags' pos' rel' dualVal''
   let (wellFormedSNM, errorList) = isWellFormedSNModel snm --This is just a safety double-check.
   if not wellFormedSNM then error $ unlines errorList --Prints error messages, if SNModel is not well-formed.
     else return snm
@@ -443,7 +444,8 @@ instance Show SNModel where
             [ ""
             , "SNModel"
             , ""
-            , "Number of Agents: " ++ show (nrAgents snm)
+            , "Agents: "
+            , show [0..nrAgents snm-1]
             , ""
             , "Topics and Positions:"
             , showPositions (positions snm)

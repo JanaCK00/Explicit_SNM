@@ -1,7 +1,7 @@
 module Semantics where
 
 
-import Syntax (Form(..), Mode(..), isInUpdateModeCons, simplify, getAgs, getTops, getPos, validTaus)
+import Syntax (Form(..), Mode(..), isInUpdateModeCons, simplify, getAgs, getTops, getPos, validTaus, validTau)
 import SNModel (SNModel(rel, dualVal, SNM, nrAgents, positions), makeFullRelModel, isWellFormedSNModel)
 import Data.Map.Strict ((!))
 import qualified Data.Map.Strict as M
@@ -21,7 +21,7 @@ import Types
 {-
 This modules implements the semantics as defined by Smets et al. (2020).
 
-It contains update function for basic social influence and friendship selection,
+It contains update functions for basic social influence and friendship selection,
 as well as for extended social influence and restricted friendship selection.
 -}
 
@@ -110,13 +110,50 @@ Best used with an already simplified Form, to avoid expensive update computation
 
 
 
-{-
-Execute a sequence of updates (from left to right) on a model and return the resulting model.
 
-Example: [updInflBasic 0.5, updSelecBasic 0.5] m = updSelecBasic 0.5 (updInflBasic 0.5 m)
+--------------------------------------------------------------------------------
+-- Safe update functions
+--------------------------------------------------------------------------------
+
+{-
+The following functions are safety wrappers around the update functions.
+They check if the input is admissible before calling the update functions.
 -}
-executeUpdates :: [SNModel -> SNModel] -> SNModel -> SNModel
-executeUpdates xs m = L.foldl' (\model f -> f model) m xs
+
+
+--Safe social influence update
+safeUpdInflBasic :: Double -> SNModel -> SNModel
+safeUpdInflBasic tau snm | not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+                         | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
+                         | otherwise          = updInflBasic tau snm
+        where
+            (wellFormedSNM, errorList) = isWellFormedSNModel snm
+
+--Safe friendship selection update
+safeUpdSelecBasic ::  Double -> SNModel -> SNModel
+safeUpdSelecBasic tau snm | not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+                          | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
+                          | otherwise          = updSelecBasic tau snm
+        where
+            (wellFormedSNM, errorList) = isWellFormedSNModel snm
+
+--Safe extended social influence update
+safeUpdInflVariant :: Double -> SNModel -> SNModel
+safeUpdInflVariant tau snm |  not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+                           | not wellFormedSNM   = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
+                           | otherwise           = updInflVariant tau snm
+        where
+            (wellFormedSNM, errorList) = isWellFormedSNModel snm
+
+--Safe restricted friendship selection update
+safeUpdSelecVariant :: Double -> SNModel -> SNModel
+safeUpdSelecVariant tau snm |not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+                            | not wellFormedSNM = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
+                            | otherwise         = updSelecVariant tau snm
+        where
+            (wellFormedSNM, errorList) = isWellFormedSNModel snm
+
+
 
 
 
@@ -381,6 +418,62 @@ updSelecVariant tau m@(SNM nrAgents' positions' rel' dualVal') = m {rel = newRel
 
 
 --------------------------------------------------------------------------------
+-- Interleaving of updates
+--------------------------------------------------------------------------------
+
+{-
+Input:
+Mode of Selec
+Mode of Infl
+tau: Threshold
+snm: SNModel
+
+Output:
+Checks whether tau is in [0,1] and whether snm is well-formed.
+If both conditions hold, calls the function interleave.
+-}
+safeInterleave :: Mode -> Mode -> Double -> SNModel -> (SNModel, Maybe Int)
+safeInterleave modeS modeI tau snm  | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
+                                    | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
+                                    | otherwise = interleave modeS modeI tau snm
+                    where
+                        (wellFormedSNM, errorList) = isWellFormedSNModel snm
+
+
+
+
+{-
+Input:
+Mode of Selec
+Mode of Infl
+Threshold
+SNM
+
+! Assumes valid threshold and well-formed SNModel.
+
+
+Output:
+Applies an interleaving of social influence and friendship selection with given threshold to the SNM
+until stabilization is reached.
+Returns a tuple of (resulting model after stabilization, number of iterations performed).
+
+If no stabilization was reached after 20 steps, the execution is stopped and Nothing is returned
+instead of the number.
+-}
+interleave :: Mode -> Mode -> Double -> SNModel -> (SNModel, Maybe Int)
+interleave Basic Basic tau     | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
+                               | otherwise          = stabCountSafe 20 (updSelecBasic tau . updInflBasic tau)
+interleave Basic Variant tau   | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
+                               | otherwise          = stabCountSafe 20 (updSelecBasic tau . updInflVariant tau)
+interleave Variant Basic  tau  | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
+                               | otherwise          = stabCountSafe 20 (updSelecVariant tau . updInflBasic tau)
+interleave Variant Variant tau | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
+                               | otherwise          = stabCountSafe 20 (updSelecVariant tau . updInflVariant tau)
+
+
+
+
+--------------------------------------------------------------------------------
 -- Helper functions
 --------------------------------------------------------------------------------
 
@@ -439,3 +532,21 @@ Forms the union of relations over all topics.
 combinedTopicsRel :: Int -> M.Map Topic Relation -> Relation
 combinedTopicsRel nragents' = M.foldl' combineRelation (V.replicate nragents' IntSet.empty)
 
+
+{-
+Input:
+maxIter: maximum number of iterations
+f: function (endomorphism)
+
+Output:
+Returns the function that will apply f until the output is stable or the maximum number of iterations has been reached.
+Then it will return a tuple of (stabilized output, number of iterations it took until stable).
+If stabilization wasn't reached in maxIter rounds, Nothing is returned for the number of iterations.
+-}
+stabCountSafe :: Eq a => Int -> (a -> a) -> a -> (a, Maybe Int)
+stabCountSafe maxIter f = go 0 where
+    go k current | k >= maxIter  = (current, Nothing)
+                 | x' == current = (current, Just k)
+                 | otherwise     = go (k + 1) x'
+      where
+        x' = f current
