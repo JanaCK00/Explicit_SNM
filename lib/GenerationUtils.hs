@@ -32,7 +32,7 @@ sublistOfLength lmin lmax xs = do
 
 {-
 Input:
-l: desired length of output
+l: desired length of output >=0
 xs: list
 
 Output:

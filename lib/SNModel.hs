@@ -54,10 +54,10 @@ Additionally, the Topic (T 0) is reserved for internal use (see Semantics.hs).
 These restrictions aren't enforced in construction, but can be checked using the function (fst $ isWellFormedSNModel)
 -}
 data SNModel = SNM
- { nrAgents :: Int
+ { nrAgents  :: Int
  , positions :: M.Map Topic (Set Position)
- , rel :: M.Map Topic Relation
- , dualVal :: M.Map Topic (IntMap (Set Position))
+ , rel       :: M.Map Topic Relation
+ , dualVal   :: M.Map Topic (IntMap (Set Position))
  } deriving (Eq)
 
 

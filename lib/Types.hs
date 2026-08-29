@@ -14,16 +14,17 @@ It also provides some helper functions for Relations.
 
 
 {-
-Data representation for topics, positions, agents and relations.
+Data representation for agents, topics, positions and relations.
 -}
-newtype Topic = T Int deriving (Eq, Show, Ord, Read)
+type Agent       = Int
+type AgentSet    = IntSet
+newtype Topic    = T Int deriving (Eq, Show, Ord, Read)
 newtype Position = P Int deriving (Eq, Show, Ord, Read)
-type Agent = Int
-type AgentSet = IntSet
+
 
 {-
-A Relation represents a directed binary relation in the form of a vector of adjacency sets.
-At the i-tn index we store the set of friends of agent i.
+A Relation represents a directed binary relation as a vector of adjacency sets.
+At index i we store the set of friends of agent i.
 -}
 type Relation = Vector AgentSet
 

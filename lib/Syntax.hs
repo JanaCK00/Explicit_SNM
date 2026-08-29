@@ -19,6 +19,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Types
+import Data.List (intercalate)
 
 
 
@@ -75,7 +76,7 @@ data Form
   | Impl Form Form              -- Implication (more efficient to implement as primitive (Gattinger (2018), p.90))
   | Infl Mode Double Form       -- Social influence (Basic or Variant) with threshold in [0,1]
   | Selec Mode Double Form      -- Friendship selection (Basic or Variant) with threshold in [0,1]
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Ord)
 
 
 {-
@@ -112,9 +113,27 @@ operatorList = flip (foldr ($))
 -- Predicates for Form
 --------------------------------------------------------------------------------
 
---Checks if a Form satisfies in-update mode-consistency and has all thresholds \in [0,1].
+{-
+Checks if a Form corresponds to a formula in L or L^* (as defined in Section 3 of the written report).
+(mode-consistent and has all thresholds \in [0,1].)
+-}
 isWellFormedForm :: Form -> Bool
-isWellFormedForm f = isInUpdateModeCons f && validTaus f
+isWellFormedForm f = isModeCons f && validTaus f
+
+
+{-
+Checks if a Form corresponds to a formula in L (as defined in Section 3 of the written report).
+(mode-consistent in mode Basic and has all thresholds \in [0,1].)
+-}
+isBasicForm :: Form -> Bool
+isBasicForm f = isBasicCons f && validTaus f
+
+{-
+Checks if a Form corresponds to a formula in L^* (as defined in Section 3 of the written report).
+(mode-consistent in mode Variant and has all thresholds \in [0,1].)
+-}
+isVariantForm :: Form -> Bool
+isVariantForm f = isVariantCons f && validTaus f
 
 
 --Checks if all threholds in a Form are \in [0,1].
@@ -272,8 +291,8 @@ simStep (Adopted ag p)  = Adopted ag p
 simStep (Neg Top)       = Bot
 simStep (Neg Bot)       = Top
 simStep (Neg (Neg f))   = simStep f
-simStep (Neg (Infl mode tau f))   = simStep (Infl mode tau (Neg f))  --Bubble up modal operator. Follows from recursion axioms.
-simStep (Neg (Selec mode tau f )) = simStep (Selec mode tau (Neg f)) --Bubble up modal operator. Follows from recursion axioms.
+simStep (Neg (Infl mode tau f))   = simStep (Infl mode tau (Neg f))  --Bubble up modal operator. Based on the recursion axiom for ¬.
+simStep (Neg (Selec mode tau f )) = simStep (Selec mode tau (Neg f)) --Bubble up modal operator. Based on the recursion axiom for ¬.
 simStep (Neg f)         = Neg $ simStep f
 simStep (Conj [])       = Top
 simStep (Conj [f])      = simStep f
@@ -282,6 +301,7 @@ simStep (Conj fs)      | Bot `elem` fs                    = Bot
                        | otherwise                        = groupByOperator $ Conj (nubOrd $ concatMap unpack fs) where
                         {-
                          groupByOperator bubbles up modal operators that are shared by more than one element in the list.
+                         This is based on the recursion axiom for ∧.
                         -}
                           unpack Top = []
                           unpack (Conj subfs) = map simStep $ filter (Top /=) subfs
@@ -294,6 +314,10 @@ simStep (Disj [f])      = simStep f
 simStep (Disj fs)      | Top `elem` fs                    = Top
                        | or [ Neg f `elem` fs | f <- fs ] = Top
                        | otherwise                        = groupByOperator $ Disj (nubOrd $ concatMap unpack fs) where
+                        {-
+                         groupByOperator bubbles up modal operators that are shared by more than one element in the list.
+                         This is based on the theorem TODO proved in Section 3 of the written report.
+                        -}
                           unpack Bot = []
                           unpack (Disj subfs) = map simStep $ filter (Bot /=) subfs
                           unpack f = [simStep f]
@@ -304,7 +328,7 @@ simStep (Impl f Bot)    = Neg (simStep f)
 
 {-
 Bubble up modal operator, if it's the same on both sides of the implication.
-Follows from recursion axioms.
+This is based on the recursion axioms for ∧ and ¬.
   -}
 simStep (Impl f@(Infl mode1 tau1 subF) g@(Infl _ tau2 subG)) | tau1==tau2  = Infl mode1 tau1 (simStep (Impl subF subG)) --assumes in-update mode-consistency
                                                              | otherwise   = Impl (simStep f) (simStep g)
@@ -313,9 +337,12 @@ simStep (Impl f@(Selec mode1 tau1 subF) g@(Selec _ tau2 subG)) | tau1==tau2  = S
 simStep (Impl f g)     | f==g      = Top
                        | otherwise = Impl (simStep f) (simStep g)
 
+
+
 {-
-Eliminate modal operators on Bot or Top. Follows from recursion axioms, proved as a theorem.
+The following simplifications are based on the theorems proved in Chapter 3.
 -}
+--Eliminate modal operators on Bot or Top.
 simStep (Infl _ _ Bot)  = Bot
 simStep (Infl _ _ Top)  = Top
 simStep (Selec _ _ Bot) = Bot
@@ -335,7 +362,7 @@ Selec Basic:
 Selec Varinat:
 (1) Selec Variant does not impact the valuation.
     Two Selec Variant in a row with increasing or constant tau leave the first applied irrelevant.
-    Therefore, if we only check a boolean combination of Adopted and stricter/equal Selec Variant (no softer Selec Variant, no Connected),
+    Therefore, if we only check a boolean combination of Adopted and stricter/equal Selec Variant (no softer Selec Variant, no Infl, no Connected),
     we can eliminate the outer Selec Variant.
 -}
 simStep (Selec mode tau f) | mode == Basic && madeOfAdopSelec f              = simStep f
@@ -551,6 +578,8 @@ Returns a randomly generated, mode-consistent and simplified Form that matches t
 This means, all Agents, Topics and Positions that occur in the random Form are present in the SNModel.
 Hence, the Form can be checked on the SNModel.
 
+If input it illformed, the function terminates with a descriptive error message.
+
 Example input in ghci:
 import Test.QuickCheck
 myModel = ...
@@ -574,6 +603,8 @@ tps: list of tuples (Topic, [Position])
 Output:
 Returns a randomly generated, mode-consistent and simplified Form that matches the input, if the input is well-formed.
 This means, all Agents, Topics and Positions that occur in the random Form were part of the input.
+
+If input it illformed, the function terminates with a descriptive error message.
 
 Example input in ghci:
 import Test.QuickCheck
@@ -652,3 +683,21 @@ isInUpdateModeCons myForm
 simplify myForm
 -}
 
+
+{-
+TODO change it in Appendix, if I do this
+-}
+--Makes Forms more readable in the console.
+instance Show Form where
+  show Top                   = "⊤"
+  show Bot                   = "⊥"
+  show (Adopted i p)         = "(Adopted " ++ show i ++ " (" ++ show p ++ "))"
+  show (Connected t i j)     = "(Connected (" ++ show t ++ ") " ++ show i ++ " " ++ show j ++ ")"
+  show (Neg f)               = "¬(" ++ show f ++ ")"
+  show (Conj fs)             = "(" ++ intercalate " ∧ " (map show fs) ++ ")"
+  show (Disj fs)             = "(" ++ intercalate " ∨ " (map show fs) ++ ")"
+  show (Impl f g)            = "(" ++ show f ++ " → " ++ show g ++ ")"
+  show (Infl Basic tau f)    = "⟨Infl Basic " ++ show tau ++ "⟩" ++ show f
+  show (Infl Variant tau f)  = "⟨Infl Variant " ++ show tau ++ "⟩" ++ show f
+  show (Selec Basic tau f)   = "⟨Selec Basic " ++ show tau ++ "⟩" ++ show f
+  show (Selec Variant tau f) = "⟨Selec Variant " ++ show tau ++ "⟩" ++ show f

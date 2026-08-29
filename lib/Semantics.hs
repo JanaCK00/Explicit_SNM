@@ -33,17 +33,19 @@ as well as for extended social influence and restricted friendship selection.
 
 
 {-
-Safe model checking function.
+Validation-wrapped model checking function.
 
 Input:
 snm: SNModel
 f: Form
 
 Output:
-Checks if f is in-update mode consistent. --TODO maybe change to mode-consistent
+Checks if f ise mode consistent.
 Cheks if f only contains valid thresholds (in [0,1]).
 Checks if snm is a well-formed social networks model.
 Checks if Agents, Topics and Positions occurring in f also appear in snm.
+
+In case of violations, terminated with descriptive error message.
 
 If all conditions hold, checks if f holds on snm.
 
@@ -56,7 +58,7 @@ myModel *|= myForm
 -}
 
 (*|=) :: SNModel -> Form -> Bool
-(*|=) snm f | not (isInUpdateModeCons f) = error "Formula is not at least in-operator mode-consistent."
+(*|=) snm f | not (isInUpdateModeCons f) = error "Formula is not mode-consistent."
             | not (validTaus f')         = error "Formula contains modal operators with invalid thresholds (not in [0,1])."
             | not wellFormedSNM          = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
             | not (match snm f')         = error "Formula contains Agents, Topics or Positions that aren't defined in the Social Networks Model."
@@ -112,42 +114,40 @@ Best used with an already simplified Form, to avoid expensive update computation
 
 
 --------------------------------------------------------------------------------
--- Safe update functions
+-- Validation-wrapped update functions
 --------------------------------------------------------------------------------
 
 {-
-The following functions are safety wrappers around the update functions.
-They check if the input is admissible before calling the update functions.
+The following functions are validation-wrappers around the update functions.
+They check whether the input is admissible before calling the respective update functions.
 -}
 
-
---Safe social influence update
-safeUpdInflBasic :: Double -> SNModel -> SNModel
-safeUpdInflBasic tau snm | not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+validInflBasic :: Double -> SNModel -> SNModel
+validInflBasic  tau snm | not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
                          | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
                          | otherwise          = updInflBasic tau snm
         where
             (wellFormedSNM, errorList) = isWellFormedSNModel snm
 
---Safe friendship selection update
-safeUpdSelecBasic ::  Double -> SNModel -> SNModel
-safeUpdSelecBasic tau snm | not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+
+validSelecBasic ::  Double -> SNModel -> SNModel
+validSelecBasic tau snm | not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
                           | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
                           | otherwise          = updSelecBasic tau snm
         where
             (wellFormedSNM, errorList) = isWellFormedSNModel snm
 
---Safe extended social influence update
-safeUpdInflVariant :: Double -> SNModel -> SNModel
-safeUpdInflVariant tau snm |  not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+
+validInflVariant :: Double -> SNModel -> SNModel
+validInflVariant tau snm |  not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
                            | not wellFormedSNM   = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
                            | otherwise           = updInflVariant tau snm
         where
             (wellFormedSNM, errorList) = isWellFormedSNModel snm
 
---Safe restricted friendship selection update
-safeUpdSelecVariant :: Double -> SNModel -> SNModel
-safeUpdSelecVariant tau snm |not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
+
+validSelecVariant :: Double -> SNModel -> SNModel
+validSelecVariant tau snm |not $ validTau tau = error "Invalid threshold. Thresholds must be in [0,1]."
                             | not wellFormedSNM = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
                             | otherwise         = updSelecVariant tau snm
         where
@@ -209,13 +209,13 @@ Returns the set of positions the agents adopts after the update.
 -}
 updInflBasic :: Double -> SNModel ->SNModel
 updInflBasic tau m@(SNM nrAgents' positions' rel' dualVal') = m { dualVal = M.mapWithKey update_per_topic dualVal' } where
-    combinedFriendsGroups | (T 0) `M.member` rel' = L.nub $ V.toList (rel' ! (T 0)) --In Variant case: Saves computing the nub several times.
+    combinedFriendsGroups | T 0 `M.member` rel' = L.nub $ V.toList (rel' ! T 0) --In Variant case: Saves computing the nub several times.
                           | otherwise = []
     --Agents that don't adopt any positions in the topic are ommitted from the map.
     update_per_topic t dualVal_t = IntMap.fromList $ filter (not . null . snd) $ map (\i -> (i, getNewPos i)) [0..(nrAgents'-1)]
         where
         friendsGroupMap | tau==0    = M.empty --If tau is zero, we don't need this computation.
-                        | (T 0) `M.member` rel' = buildFriendsGroupMap combinedFriendsGroups
+                        | T 0 `M.member` rel' = buildFriendsGroupMap combinedFriendsGroups
                         | otherwise = buildFriendsGroupMap $ L.nub $ V.toList (rel' ! t)
 
         buildFriendsGroupMap [] = M.empty
@@ -229,7 +229,7 @@ updInflBasic tau m@(SNM nrAgents' positions' rel' dualVal') = m { dualVal = M.ma
                      | tau == 0                        = positions' ! t              --if tau is zero, all people with friends get the full positions list of the topic
                      | otherwise                       = friendsGroupMap ! friends   --assign the updated positions for agents with this set of friends
                      where
-                            friends | (T 0) `M.member` rel' = (rel'! (T 0)) V.! ag
+                            friends | T 0 `M.member` rel' = (rel'! T 0) V.! ag
                                     | otherwise = (rel' ! t) V.! ag
                             nr_friends = IntSet.size friends
 
@@ -432,8 +432,8 @@ Output:
 Checks whether tau is in [0,1] and whether snm is well-formed.
 If both conditions hold, calls the function interleave.
 -}
-safeInterleave :: Mode -> Mode -> Double -> SNModel -> (SNModel, Maybe Int)
-safeInterleave modeS modeI tau snm  | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
+validInterleave :: Mode -> Mode -> Double -> SNModel -> (SNModel, Maybe Int)
+validInterleave modeS modeI tau snm  | not $ validTau tau = error "Invalid threshold. Threshold must be in [0,1]."
                                     | not wellFormedSNM  = error $ "Social Networks Model is not well-formed. \n" ++ unlines errorList
                                     | otherwise = interleave modeS modeI tau snm
                     where
