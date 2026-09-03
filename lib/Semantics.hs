@@ -33,17 +33,17 @@ as well as for extended social influence and restricted friendship selection.
 
 
 {-
-Validation-wrapped model checking function.
+Wrapper for the evaluation function with input validation.
 
 Input:
 snm: SNModel
 f: Form
 
 Output:
-Checks if f ise mode consistent.
-Cheks if f only contains valid thresholds (in [0,1]).
-Checks if snm is a well-formed social networks model.
-Checks if Agents, Topics and Positions occurring in f also appear in snm.
+Checks whether f ise mode consistent.
+Cheks whether f only contains valid thresholds (in [0,1]).
+Checks whether snm is a well-formed social networks model.
+Checks whether Agents, Topics and Positions occurring in f also appear in snm.
 
 In case of violations, terminated with descriptive error message.
 
@@ -87,7 +87,7 @@ match snm f = matchAg && matchTops && matchPos where
 
 
 {-
-Unsafe model checking function.
+Evaluation function.
 ! Assumes a well-formed SNModel, and a well-formed and matching Form.
 ! Doesn't simplify the Form before checking.
 
@@ -114,12 +114,12 @@ Best used with an already simplified Form, to avoid expensive update computation
 
 
 --------------------------------------------------------------------------------
--- Validation-wrapped update functions
+-- Wrappers for update functions
 --------------------------------------------------------------------------------
 
 {-
-The following functions are validation-wrappers around the update functions.
-They check whether the input is admissible before calling the respective update functions.
+The following wrapper functions validate whether the input
+is admissible before calling the corresponding update functions.
 -}
 
 validInflBasic :: Double -> SNModel -> SNModel
@@ -214,8 +214,7 @@ updInflBasic tau m@(SNM nrAgents' positions' rel' dualVal') = m { dualVal = M.ma
     --Agents that don't adopt any positions in the topic are ommitted from the map.
     update_per_topic t dualVal_t = IntMap.fromList $ filter (not . null . snd) $ map (\i -> (i, getNewPos i)) [0..(nrAgents'-1)]
         where
-        friendsGroupMap | tau==0    = M.empty --If tau is zero, we don't need this computation.
-                        | T 0 `M.member` rel' = buildFriendsGroupMap combinedFriendsGroups
+        friendsGroupMap | T 0 `M.member` rel' = buildFriendsGroupMap combinedFriendsGroups
                         | otherwise = buildFriendsGroupMap $ L.nub $ V.toList (rel' ! t)
 
         buildFriendsGroupMap [] = M.empty
@@ -269,7 +268,7 @@ Performs the Basic friendship selection update on m with the provided threshold 
 
 General properties:
  - Produces reflexive and symmetric relations.
- - Indempotent with constant tau
+ - Idempotent with constant tau
  - Not accumulative
  - Application of two basic friendship selection updates with different tau makes the first applied irrelevant.
 
@@ -352,7 +351,7 @@ Output:
 Performs the extended social influence update on m with the provided threshold tau.
 
 Explanation:
-The extended social influence update take into account the positions of all friends (no matter the topic).
+The extended social influence update takes into account the positions of all friends (no matter the topic).
 Therefore, the update calls updInflBasic with a SNM that is the same except it only has one combined relation
 for a topic (T 0). This topic is reseved for this special case.
 -}
@@ -389,7 +388,7 @@ transClosure:
 Computes the reflexive and transitive closure of the union of the relations of all topics.
 
 thisTsRel t:
-Computes the new relation for topic t. Proceeds by computung the new friends for each agent (newFriends ag).
+Computes the new relation for topic t. Proceeds by computing the new friends for each agent (newFriends ag).
 
 newFriends ag:
 Computes the new set of frineds of agent ag for the current topic.

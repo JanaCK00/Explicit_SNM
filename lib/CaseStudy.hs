@@ -556,7 +556,7 @@ runOne :: PopularStrat -> [Int] -> SNModel -> Results
 runOne popStrat leaders snm   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
     interveneSNM              = snm {dualVal = M.singleton flight (intervention popStrat leaders dualVal_flight)}
     (avgPublic', avgLeaders') = averageDegrees flightRel leaders
-    (finalModel , stab'')     = interleave Variant Basic threshold interveneSNM
+    (finalModel , stab'')     = interleave Variant Basic threshold interveneSNM --TODO change to Basic on Basic, or Variant on Variant!!! (so it corresponds to my L or L*)
     finalDistribution         = posDistribution_t finalModel flight
     flightRel                 = rel snm M.! flight
     stab'                     = fromIntegral <$> stab''

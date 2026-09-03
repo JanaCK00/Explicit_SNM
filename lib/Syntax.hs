@@ -316,7 +316,7 @@ simStep (Disj fs)      | Top `elem` fs                    = Top
                        | otherwise                        = groupByOperator $ Disj (nubOrd $ concatMap unpack fs) where
                         {-
                          groupByOperator bubbles up modal operators that are shared by more than one element in the list.
-                         This is based on the theorem TODO proved in Section 3 of the written report.
+                         This is based on a theorem proved in Chapter 3 of the written report.
                         -}
                           unpack Bot = []
                           unpack (Disj subfs) = map simStep $ filter (Bot /=) subfs
@@ -328,7 +328,7 @@ simStep (Impl f Bot)    = Neg (simStep f)
 
 {-
 Bubble up modal operator, if it's the same on both sides of the implication.
-This is based on the recursion axioms for ∧ and ¬.
+This is based on a theorem proved in Chapter 3 of the written report.
   -}
 simStep (Impl f@(Infl mode1 tau1 subF) g@(Infl _ tau2 subG)) | tau1==tau2  = Infl mode1 tau1 (simStep (Impl subF subG)) --assumes in-update mode-consistency
                                                              | otherwise   = Impl (simStep f) (simStep g)
@@ -691,8 +691,8 @@ TODO change it in Appendix, if I do this
 instance Show Form where
   show Top                   = "⊤"
   show Bot                   = "⊥"
-  show (Adopted i p)         = "(Adopted " ++ show i ++ " (" ++ show p ++ "))"
-  show (Connected t i j)     = "(Connected (" ++ show t ++ ") " ++ show i ++ " " ++ show j ++ ")"
+  show (Adopted i p)         = "Adopted " ++ show i ++ " (" ++ show p ++ ")"
+  show (Connected t i j)     = "Connected (" ++ show t ++ ") " ++ show i ++ " " ++ show j
   show (Neg f)               = "¬(" ++ show f ++ ")"
   show (Conj fs)             = "(" ++ intercalate " ∧ " (map show fs) ++ ")"
   show (Disj fs)             = "(" ++ intercalate " ∨ " (map show fs) ++ ")"

@@ -73,7 +73,7 @@ spec = do
             \snm i1 -> selecMakesReflVariant (snm::SNModel) (i1::Double)
         prop "A Selec Variant operation on an arbitrary SNModel doesn't increase the number of reachable agents for any agent" $ do
             \snm i1 -> noGrowingReachable (i1::Double) (snm::SNModel)
-        prop "Dummy to see how many steps until stable variant" $ do
+        prop "Dummy to see how many steps until stable variantInterleaving" $ do
             prop_numberOfTurnsVariant
         prop "Updates on Example 4 from paper Smets et al (2020) are correctly computed (SelecBasic, InflVariant)" $ do
             exPaperVarstep1 == updSelecBasic 0.5 exPaperVarstep0 &&

@@ -103,7 +103,7 @@ isWellFormedPositions :: M.Map Topic (Set Position) -> (Bool, String)
 isWellFormedPositions pos' = (wellFormedPos, unlines errorList) where
     errorList = map snd $ filter (not . fst) [wellFormedTs, wellFormedTps, disjoint]
     wellFormedPos = null errorList
-    wellFormedTs = (M.size pos' > 0 && (T 0) `M.notMember` pos', "You need at least one topic (T 0 reserved).")
+    wellFormedTs = (M.size pos' > 0 && T 0 `M.notMember` pos', "You need at least one topic (T 0 reserved).")
     wellFormedTps = (not (any null pos') , "You need at least one position per topic.")
     disjoint = (S.size (S.unions pos') == foldr ((+) . S.size) 0 pos', "Positions can't belong to more than one topic.")
 
@@ -254,8 +254,8 @@ makeMyModel = do
     DualVal -> do
         dualInput <- askUntilValid
             (unlines
-                [ "Enter the positions adopted by the agents for each topic."
-                , "Agents with no adopted positions can be omitted."
+                [ "Enter the positions held by the agents for each topic."
+                , "Agents who hold no position on some topic can be omitted."
                 , "Format: [(Topic, [(Agent, [Position])])]"
                 , "Example: [(T 1, [(0,[P 1]), (1,[P 1,P 2])])]"
                 ])
@@ -378,7 +378,7 @@ Default values for arbitrary generation. (defining the domain for Agents, Topics
 These are necessary to make sure arbitrary Forms match arbitrary SNModels.
 -}
 defaultNrAgs, nrTpcs, nrPosTotal :: Int
-defaultNrAgs = 120
+defaultNrAgs = 100
 nrTpcs = 2
 nrPosTotal = 6 --number of positions in total, assumes nrPosTotal >= nrTpcs
 
