@@ -16,6 +16,7 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as L
 import Types
+import Data.Maybe (fromJust)
 
 
 {-
@@ -96,7 +97,8 @@ Best used with an already simplified Form, to avoid expensive update computation
 (|=) :: SNModel -> Form -> Bool
 (|=) _ Top                                      = True
 (|=) _ Bot                                      = False
-(|=) m (Adopted agent position')                = any ((position' `S.member`) . lookupDualVal agent) (dualVal m)
+(|=) m (Adopted agent position')                = position' `S.member` lookupDualVal agent (dualVal m M.! thisTopic)
+                                                    where thisTopic = fst $ fromJust $ L.find (\(_, s) -> S.member position' s) (M.toList (positions m))
 (|=) m (Connected topic agent1 agent2)          = agent2 `IntSet.member`((rel m ! topic) V.! agent1)
 (|=) m (Neg f)                                  = not $ m |= f
 (|=) m (Conj fs)                                = all (m |=) fs --returns true on empty list
@@ -484,7 +486,7 @@ countOccur = L.foldl' (\cur a -> M.insertWith (+) a 1 cur) M.empty
 
 
 {-
-Safe lookup for non-total dual valuation map.
+Safe lookup for dual valuation of a specific topic.
 If an Agent is not the map, their set of positions is empty.
 -}
 lookupDualVal :: IntMap.Key -> IntMap (Set a) -> Set a

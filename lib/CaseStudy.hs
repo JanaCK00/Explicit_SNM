@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module CaseStudy where
 
 import SNModel
@@ -7,7 +8,7 @@ import SNModel
 import Test.QuickCheck
   ( Arbitrary (..)
   , Gen
-  , elements, generate, sublistOf, chooseInt)
+  , elements, generate, sublistOf, chooseInt, choose)
 import Test.QuickCheck.Gen (genDouble)
 import GenerationUtils (sublistRec)
 import Data.Set (Set)
@@ -30,33 +31,46 @@ import Syntax (Mode (Basic, Variant))
 import Types
 
 
+{-
+This module implements the necessary code for the case study.
+It includes:
+ (1) an implementation of Holme-Kim network generation;
+ (2) random generation of SNMs for the case study
+ (3) running the experiment and printing the results to the console.
+-}
+
+
+--------------------------------------------------------------------------------
+-- Definition of parameters
+--------------------------------------------------------------------------------
+
 
 {-
 Define necessary Topics, Positions, Maps and Sets of Positions for the case study.
 -}
 flight :: Topic
-flight = T 3
+flight = T 1
 
-ballot, flightNorm, thirdOne, fourthOne :: Position
-ballot = P 5
-flightNorm = P 6
-thirdOne = P 7
-fourthOne = P 8
+ballot, flightNorm, moneyNorm :: Position
+ballot = P 1
+flightNorm = P 2
+moneyNorm = P 3
 
 posMapFlight :: M.Map Topic (Set Position)
-posMapFlight = M.singleton flight (S.fromList [ballot, flightNorm, thirdOne])
+posMapFlight = M.singleton flight (S.fromList [ballot, flightNorm, moneyNorm])
 
 
 {-
 Define proportion of distribution of position ballot in initial network.
-58% percent of nodes will hold position ballot initially.
+58% of nodes will hold position ballot initially.
 The number is taken from literature.
 -}
 propoBallot :: Double
-propoBallot = 0.58 --TODO have this as a variable
+propoBallot = 0.58
 
 {-
 Compute the absolute number of nodes who will hold the position ballot initially, according to the proportion.
+With propoBallot = 0.58 -> 70
 -}
 nrBallot :: Int
 nrBallot = computeProportion propoBallot totalNrAgs
@@ -66,36 +80,34 @@ Input:
 0<=p<=1 proportion
 n
 
-Computes the integer number corresponding to a given proportion of a total (rounded down).
+Computes the integer number corresponding to a given proportion of a total (rounded to the nearest integer).
 -}
 computeProportion :: (RealFrac a, Integral b, Integral c) => a -> c -> b
-computeProportion p n = floor (p * fromIntegral n + 1e-9)
-
---define necessary parameters
---CHANGE if needed
-totalNrAgs, m0Param, mParam, nParam, aParam  :: Int
-threshold, pTParam :: Double
+computeProportion p n = round (p * fromIntegral n + 1e-9)
 
 
-totalNrAgs = 120    --number of agents in the generated networks
-threshold = 0.5     --fixed threshold applied throughout the case study
 
 {-
 Define fixed parameters for Holme-Kim network generation.
 -}
+
+totalNrAgs, m0Param, mParam, nParam, aParam  :: Int
+threshold :: Double
+
+
+totalNrAgs = 120    --number of agents in the generated networks
+threshold = 0.5     --fixed threshold applied throughout the case study
 nParam = totalNrAgs --number of nodes in generated network
 mParam = 3          --number of edges added per node in network generation
 m0Param = 3         --size of starting network in generation
-pTParam = 0.5       --probability of a TF step.
 aParam = 1          --initial attractiveness
 --The average number of TF trials per added node is m_t = (m-1) * p_t. For m=3, this means m_t = 2 * p_t.
 
---TODO find good starting value
---decides the number of randomly chosen starting nodes for nomination strategy
-indexSize :: Int
-indexSize = 10
 
 
+--------------------------------------------------------------------------------
+-- Implementation of Holme Kim network generation
+--------------------------------------------------------------------------------
 
 
 {-
@@ -118,11 +130,11 @@ initialCore m_0 = initialCoreRec 0 where
 {-
 Generates a Holme-Kim relation
 Input:
-N:            number of nodes in final network. -> TODO probably 120
-m:            number of edges added per new node -> TODO probably 3
-m ≤ m_0 < N : number of initial nodes -> TODO probably 3
-p_t :         probability of a triad formation (TF) step -> TODO start with 0.5
-A :           initial attractiveness for preferential attachment (PA) -> TODO start with 1
+N:            number of nodes in final network
+m:            number of edges added per new node
+m ≤ m_0 < N : number of initial nodes
+p_t :         probability of a triad formation (TF) step
+A :           initial attractiveness for preferential attachment (PA)
 -}
 holmeKim :: Int -> Int -> Int -> Double -> Int -> Gen Relation
 holmeKim n m m_0 = holmeKimRec (n-m_0) m cur where
@@ -276,10 +288,16 @@ insertAt v w (x:xs) = x : insertAt (v - 1) w xs
 
 
 {-
-Takes an adjacency list and translates it into a Relation (adjacency set)
+Takes a list of adjacency lists and translates it into a Relation (vector of adjacency sets)
 -}
 translate :: [[Int]] -> Relation
 translate xs = V.fromList $  L.map IntSet.fromList xs
+
+
+
+--------------------------------------------------------------------------------
+-- Generation of SNMs for the case study
+--------------------------------------------------------------------------------
 
 
 {-
@@ -291,7 +309,7 @@ Additionally allows to store the majority opinion combination.
 
 data SNMCase = SNMCase
     { model :: SNModel
-    , popularPos :: Set Position  --stores the popular opinion combination
+    , popularPos :: Set Position  --Stores the set of popular positions (>50% of agents hold it).
     } deriving (Eq, Show)
 
 
@@ -306,29 +324,268 @@ unwrap (SNMCase snm _) = snm
 {-
 Generates an SNMCase with arbitrary Holme-Kim Relation,
 and randomly distributed position ballot according to the proportion.
+
+p_t: parameter for holme kim (clustering)
 -}
-instance Arbitrary SNMCase where
-    arbitrary = do
-        flightRel <- holmeKim nParam mParam m0Param pTParam aParam
+
+
+randomSNMCase :: Double -> Gen SNMCase
+randomSNMCase p_t = do
+        --Generate a random Holme-Kim relation.
+        flightRel <- holmeKim nParam mParam m0Param p_t aParam
         let rel' = M.singleton flight flightRel
             ags = [0..totalNrAgs-1]
-        takeBallot <- IntSet.fromList <$> sublistRec 60 ags
-        takeThirdOne <- IntSet.fromList <$> sublistRec 60 ags --TODO tweaking here
-        --takeFourthOne <- IntSet.fromList <$> sublistRec 70 ags
-        let popular = S.empty--TODO continue here to get out the majority
-        let val_t' = M.fromList [(ballot, takeBallot), (thirdOne, takeThirdOne)]
+        --Randomly pick the agents who hold the position "ballot".
+        takeBallot <- IntSet.fromList <$> sublistRec nrBallot ags
+        --Randomly pick the agents who will hold position TODO.
+        nrMoneyNorm <- choose (0,totalNrAgs) --TODO have this be a parameter as well?
+        takeMoneyNorm <- IntSet.fromList <$> sublistRec nrMoneyNorm ags
+        --Build the set of popular positions.
+        let popular | nrMoneyNorm * 2 > totalNrAgs = S.fromList [ballot, moneyNorm]
+                    | otherwise                    = S.singleton ballot
+        --Assign the valuation.
+        let val_t' = M.fromList [(ballot, takeBallot), (moneyNorm, takeMoneyNorm)]
         let dualVal' = M.singleton flight $ valToDualVal_t val_t'
+        --Return the SNM and the popular positions.
         return $ SNMCase (SNM totalNrAgs posMapFlight rel' dualVal') popular
 
-
-getSNMCase :: Gen SNMCase
-getSNMCase = arbitrary
 
 {-
 Example usage in ghci:
 import Test.QuickCheck
-generate getSNMCase
+generate $ randomSNMCase 0.5
 -}
+
+
+
+--------------------------------------------------------------------------------
+-- Running the experiment
+--------------------------------------------------------------------------------
+
+{-
+Defining the parameters.
+-}
+
+--The values for the parameter p_t in Holme Kim.
+ourPts :: [Double]
+ourPts = [0, 0.5, 0.8]
+
+--The values for the number of leaders picked.
+ourKs :: [Int]
+ourKs = [15, 20, 25, 30]
+
+{-
+Data type for the intervention strategy.
+Popular: opinion leaders adapt their positions to mirror the popular stances.
+Authentic: opinion leaders stick to their positions
+-}
+
+data InterventionStrat = Popular | Authentic deriving (Show, Eq, Ord)
+
+
+{-
+Number of agents -> 120
+parameters of holme kim -> as defined above
+Threshold -> 0.5
+InflMode -> Basic
+SelecMode -> Basic -> easier to justify
+
+Input:
+p_t: current paramter for holme kim
+n: Number of models to generate
+ks: list of values for k to test
+
+Will generate n SNMCase using the parameter p_t for Holme Kim.
+Will then test each value for k for each intervention strategy on each of the n relations.
+Returns average results over the runs.
+
+ACHTUNG ._.
+-}
+experimentHolme :: Double -> Int -> [Int] -> Gen [(Int, InterventionStrat, Results)]
+experimentHolme p_t n ks = do
+    caseModels <- replicateM n (randomSNMCase p_t)
+    allResults <- forM caseModels $ \rel' ->
+        forM ks $ \k ->
+            forM [Popular, Authentic] $ \interventionStrat -> do
+                resultOne <- runOneGen interventionStrat k rel'
+                pure (k, interventionStrat, resultOne)
+    return $ aggregate ks (concat $ concat allResults)
+
+
+{-
+Input:
+List of values for k
+List of experiment results inlcuding k and Strategy.
+
+Output:
+Aggregates the results by k and Strategy, to display average values across the generated models.
+-}
+aggregate :: [Int]  -> [(Int, InterventionStrat, Results)] -> [(Int, InterventionStrat, Results)]
+aggregate ks listOfResults =
+    [ (k, s, averageResult [x | (k', s', x) <- listOfResults, k == k', s == s'])
+    | k <- ks
+    , s <- [Popular, Authentic]
+    ]
+
+{-
+Input:
+Assumes non-empty list as input.
+List of experiment Results (single runs).
+
+Output:
+Calculates average of Results.
+
+-}
+averageResult :: [Results] -> Results
+averageResult xs = addedUp `divideInt` length xs where
+    addedUp = sumResults xs
+    divideInt (Results p l s r adop rejec partialSucc) i = Results (fI p i) (fI l i) (fIM s i) (M.map (`fI` i) r) (fI adop i) (fI rejec i) (fI partialSucc i) where
+        fI x y = x / fromIntegral y
+        fIM Nothing _ = Nothing
+        fIM (Just x) y = Just (x / fromIntegral y)
+
+{-
+Input: List of Results
+Output: implements sum for [Results]
+-}
+sumResults :: [Results] -> Results
+sumResults = L.foldl' addResults zeroResults where
+    zeroResults = Results 0 0 (Just 0) M.empty 0 0 0--TODO check if it works with [] as last argument, sonst rausholen
+    addResults (Results a1 b1 c1 d1 e1 f1 g1) (Results a2 b2 c2 d2 e2 f2 g2) = Results (a1+a2) (b1+b2) ((+) <$> c1 <*> c2) (M.unionWith (+) d1 d2) (e1+e2) (f1+f2) (g1+g2)
+
+{-
+Data type to store results of experiment. Usually a single run of experiment, but can also be used to store an average.
+TODO can be extended if necessary
+-}
+data Results = Results
+    { avgPublic     :: Double                --Initial average degree of non-leader nodes
+    , avgLeaders    :: Double                --Initial average degree of leader nodes
+    , stab          :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
+    , adoptRatios   :: M.Map Position Double --Ratio of nodes who hold each position in the final model.
+    , fullyAdopted  :: Double                --Number of times all agents adopted the new position in the final model.
+    , fullyRejected :: Double                --Number of times no agents adopted the new position in the final model.
+    , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model (--TODO gute Zahl hier finden)
+    } deriving (Show)
+
+{-
+Input:
+Leader Identification Strategy
+0 < k <= totalNrAgs: number of leaders
+SNMCase
+
+Output:
+Identifies k leaders according to strategy, runs the experiment and return the results.
+
+-}
+runOneGen :: InterventionStrat -> Int -> SNMCase -> Gen Results
+runOneGen popStrat k snmCase = do
+    let snm = model snmCase
+    leaders <- getLeaders KRich k (rel snm M.! flight)
+    return $ runOne popStrat leaders snmCase
+
+
+
+{-
+Input:
+Popularty Strategy
+List of leaders (0 < length <= nr of Agents)
+SNMCase
+
+Output:
+Intervenes on positions of leaders, runs interleaving and returns results.
+-}
+runOne :: InterventionStrat -> [Int] -> SNMCase -> Results
+runOne popStrat leaders snmCase   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
+    snm                       = model snmCase
+    pops                      = popularPos snmCase
+    interveneSNM              = snm {dualVal = M.singleton flight (intervention popStrat pops leaders dualVal_flight)}
+    (avgPublic', avgLeaders') = averageDegrees flightRel leaders
+    (finalModel , stab'')     = interleave Basic Basic threshold interveneSNM --TODO either Basic on Basic or Variant on Variant
+    finalDistribution         = posDistribution_t finalModel flight
+    flightRel                 = rel snm M.! flight
+    stab'                     = fromIntegral <$> stab''
+    dualVal_flight            = dualVal snm M.! flight
+    (fullyA, fullyR, partSucc)| isNothing (M.lookup flightNorm finalDistribution) = (0.0, 1.0, 0.0)
+                              | finalDistribution M.! flightNorm  == 1.0          = (1.0, 0.0, 1.0)
+                              | finalDistribution M.! flightNorm > 0.5            = (0.0, 0.0, 1.0)
+                              | otherwise                                         = (0, 0, 0)
+
+
+
+
+{-
+Input:
+Popularity Strategy
+Set of popular positions
+List of leaders
+DualVal_t: DualVal of a specific topic
+
+Output: New dualVal_t where the leaders have their new positions after intervention.
+-}
+intervention :: InterventionStrat -> Set Position -> [Int] -> IntMap (Set Position) -> IntMap (Set Position)
+intervention Authentic _ leaders dualVal_t = IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ map (, S.singleton flightNorm) leaders --insert flightnorm for all leaders
+intervention Popular pops leaders dualVal_t = IntMap.union (IntMap.fromList $ map (, S.insert flightNorm pops) leaders) dualVal_t
+
+{-
+Input:
+p_t: Parameter for Holme Kim
+n > 0: Number of models to generat
+List of values for k to test
+
+Output:
+Runs experiment and prints results.
+-}
+runAndShow :: Double -> Int -> [Int] -> IO()
+runAndShow p_t n ks = do
+    putStr $ "WELCOME to the experiment zone :) In your experiment, " ++ show n ++ " Holme-Kim networks with p_t = " ++ show p_t ++ " and "++ show totalNrAgs ++
+        " nodes were randomly generated. \n The tested values for the number of leaders were: " ++ show ks ++
+        ". Are you READY for the results? \n"
+    results <- generate (experimentHolme p_t n ks)
+    printTable results
+
+
+
+{-
+Input: A list of aggregated result.
+Output: Prints the results to the console.
+-}
+
+printTable :: [(Int, InterventionStrat, Results)] -> IO()
+printTable results = do
+    let strategyMap = M.fromListWith (++) [ (s, [(k, r)]) | (k, s, r) <- results]
+    printPopStrategy Popular (strategyMap M.! Popular)
+    printPopStrategy Authentic (strategyMap M.! Authentic)
+    --printStrategy Nomination (strategyMap M.! Nomination) --TODO habe hier Nomination rausgenommen
+    --printStrategy LocalNom (strategyMap M.! LocalNom)
+
+
+--ACHTUNG . - .
+--TODO xs is ordered the wrong way (decreasing)
+printPopStrategy :: InterventionStrat -> [(Int, Results)] -> IO ()
+printPopStrategy s xs = do
+    putStrLn $ "\n=== " ++ show s ++ " ==="
+    printf "%5s %10s %10s %10s %10s %10s %10s %10s\n"
+        "k" "Degree Public" "Degree Leaders" "Rounds" "Ratio" "Success" "Failure" "Partial"
+    mapM_ printRow xs
+  where
+    printRow (k, Results a' b' c' d' e' f' g') =
+        printf "%5d %10.3f %10.3f %10s %10s %10s %10s %10s\n"
+            k a' b' (show c') (show d') (show (e'*100) ++ "%") (show (f'*100) ++ "%") (show (g'*100) ++ "%")
+
+--usage in ghci:
+{-
+usage in ghci:
+import Test.QuickCheck
+myModel <- generate arbitrary :: IO SNModel
+
+generate (sublistRec 3 [1,2,3,4,5])
+-}
+--averageDegreesCSNModel <$> (generate arbitrary :: IO CaseSNM)
+
+
+--------------------------------------------------------------------------------
+-- Helper functions
+--------------------------------------------------------------------------------
 
 {-
 Input: SNmodel, Topic
@@ -342,6 +599,7 @@ posDistribution_t snm t =  M.map (\s -> fromIntegral (IntSet.size s) / fromInteg
     nrAgs = nrAgents snm --assume >0
 
 --TODO test
+
 
 
 
@@ -375,13 +633,10 @@ averageDegrees rel' leaders'= (avgPublic', avgLeaders') where
 {-
 Data type for the identification strategies for leaders:
 
-KRich: Highest degree nodes in the network. Corresponds to celebrity strategy. OR the full mapping?
-Random: Randomly chosen nodes. Corresponds to volunteer strategy.
-Nomination: Randomly choose nodes, which then recommend the highest degree node in their neighboorhood.(global knowledge) Corresponds to snowball strategy.
-LocalNom: All nodes recommend their most locally embedded node, then we choose the most nominated ones --TODO keep working on these, also have it with smaller sample size, and for the case that we don't find enough on level 1
+KRich: Highest degree nodes in the network. -> opinion leaders
+Random: Randomly chosen nodes.              -> volunteers
 -}
-data Strategy = Random | KRich deriving (Show, Eq, Ord) --UNCOMMENT HERE for the identification strategies: | Nomination | LocalNom
-
+data Strategy = Random | KRich deriving (Show, Eq, Ord) --TODO will probably not use Random, might just show that the average degree is way lower
 
 {-
 Input:
@@ -416,7 +671,6 @@ TODO test
 findKrich :: Int -> Relation -> [Int]
 findKrich k rel' = take k $ map fst $ degreeListDesc rel'
 
-
 {-
 Input: Relation
 Output: a list of tuples (agent, number of friends),
@@ -426,213 +680,3 @@ TODO test
 -}
 degreeListDesc :: Relation -> [(Int, Int)]
 degreeListDesc = L.sortOn (Down . snd) . V.toList . V.imap (\i ags -> (i, IntSet.size ags))
-
-
-
-{-
-TODO working on new idea
-
-Popular: opinion leaders take up the popular existing norm
-Authentic: opinion leaders stick to their initial stance in the existinc norm
--}
-
-data PopularStrat = Popular | Authentic deriving (Show, Eq, Ord)
-
-
-{-
-have a list of all the varying parameters
-
-
-Number of agents -> 120
-parameters of holme kim -> as defined above
-Threshold -> 0.5
-InflMode -> Basic
-SelecMode -> Basic?
-
-Input:
-n: Number of models to generate
-ks: list of k's to test
-
-will generate the models, then generate the leaders using the three strategies
-will save for each k the percentage of successes in each of the three strategies
-(KRich, Random, Nomination)
-
-
-ACHTUNG ._.
--}
-experimentHolme :: Int -> [Int] -> Gen [(Int, PopularStrat, Results)]
-experimentHolme n ks = do
-    caseModels <- replicateM n getSNMCase
-    let models = map unwrap caseModels --TODO here das einbauchen mit der popular opinion combo
-    allResults <- forM models $ \rel' ->
-        forM ks $ \k ->
-            forM [Popular, Authentic] $ \popularStrat -> do --todo habe hier Nomination und LocalNom rausgenommen
-                resultOne <- runOneGen popularStrat k rel'
-                pure (k, popularStrat, resultOne)
-    return $ aggregate ks (concat $ concat allResults)
-
-
-{-
-Input:
-List of values for k
-List of experiment results inlcuding k and Strategy.
-
-Output:
-Aggregates the results by k and Strategy, to display average values across the generated models.
--}
-aggregate :: [Int]  -> [(Int, PopularStrat, Results)] -> [(Int, PopularStrat, Results)]
-aggregate ks listOfResults =
-    [ (k, s, averageResult [x | (k', s', x) <- listOfResults, k == k', s == s'])
-    | k <- ks
-    , s <- [Popular, Authentic]--TODO habe hier Nomination und LocalNom rausgenommen
-    ]
-
-{-
-Input:
-List of experiment Results (single runs).
-
-Output:
-Calculates average of Results.
-
--}
-averageResult :: [Results] -> Results
-averageResult xs = addedUp `divideInt` length xs where
-    addedUp = sumResults xs
-    divideInt (Results p l s r adop rejec partialSucc) i = Results (fI p i) (fI l i) (fIM s i) (M.map (`fI` i) r) (fI adop i) (fI rejec i) (fI partialSucc i) where
-        fI x y = x / fromIntegral y
-        fIM Nothing _ = Nothing
-        fIM (Just x) y = Just (x / fromIntegral y)
-
-{-
-Input: List of Results
-Output: implements sum for [Results]
--}
-sumResults :: [Results] -> Results
-sumResults = L.foldl' addResults zeroResults where
-    zeroResults = Results 0 0 (Just 0) M.empty 0 0 0--TODO check if it works with [] as last argument, sonst rausholen
-    addResults (Results a1 b1 c1 d1 e1 f1 g1) (Results a2 b2 c2 d2 e2 f2 g2) = Results (a1+a2) (b1+b2) ((+) <$> c1 <*> c2) (M.unionWith (+) d1 d2) (e1+e2) (f1+f2) (g1+g2)
-
-{-
-Data type to store results of experiment. Usually a single run of experiment, but can also be used to store an average.
-TODO can be extended if necessary
--}
-data Results = Results
-    { avgPublic     :: Double                --Initial average degree of non-leader nodes
-    , avgLeaders    :: Double                --Initial average degree of leader nodes
-    , stab          :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
-    , adoptRatios   :: M.Map Position Double --Ratio of nodes who hold each position.
-    , fullyAdopted  :: Double                --Number of times all agents adopted the new position in the final model.
-    , fullyRejected :: Double                 --Number of times no agents adopted the new position in the final model.
-    , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model (--TODO gute Zahl hier finden)
-    } deriving (Show)
-
-{-
-Input:
-Leader Identification Strategy
-0 < k <= totalNrAgs: number of leaders
-SNMCase
-
-Output:
-Identifies k leaders according to strategy, runs the experiment and return the results.
-
--}
-runOneGen :: PopularStrat -> Int -> SNModel -> Gen Results
-runOneGen popStrat k snm = do
-    leaders <- getLeaders KRich k (rel snm M.! flight) --TODO habe hier KRich statt der Input Strategie reingetan
-    return $ runOne popStrat leaders snm
-
-
-
-{-
-Input:
-Popularty Strategy
-List of leaders (0 < length <= nr of Agents)
-SNMCase
-
-Output:
-Intervenes on positions of leaders, runs interleaving and returns results.
--}
-runOne :: PopularStrat -> [Int] -> SNModel -> Results
-runOne popStrat leaders snm   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
-    interveneSNM              = snm {dualVal = M.singleton flight (intervention popStrat leaders dualVal_flight)}
-    (avgPublic', avgLeaders') = averageDegrees flightRel leaders
-    (finalModel , stab'')     = interleave Variant Basic threshold interveneSNM --TODO change to Basic on Basic, or Variant on Variant!!! (so it corresponds to my L or L*)
-    finalDistribution         = posDistribution_t finalModel flight
-    flightRel                 = rel snm M.! flight
-    stab'                     = fromIntegral <$> stab''
-    dualVal_flight               = dualVal snm M.! flight
-    (fullyA, fullyR, partSucc)| isNothing (M.lookup flightNorm finalDistribution) = (0.0, 1.0, 0.0)
-                              | finalDistribution M.! flightNorm  == 1.0          = (1.0, 0.0, 1.0)
-                              | finalDistribution M.! flightNorm > 0.5          = (0.0, 0.0, 1.0)
-                              | otherwise                                         = (0, 0, 0)
-
-
-
-
-{-
-Input:
-Popularity Strategy
-List of leaders
-DualVal_t: DualVal of a specific topic
-
-Output: New dualVal_t where the leaders have their new positions after intervention.
--}
-intervention :: PopularStrat -> [Int] -> IntMap (Set Position) -> IntMap (Set Position)
-intervention Authentic leaders dualVal_t = IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ zip leaders (repeat $ S.singleton flightNorm) --insert flightnorm for all leaders
-intervention Popular leaders dualVal_t = IntMap.mapWithKey (\k v -> if isLeader k then S.fromList [flightNorm, thirdOne, ballot] else v) dualVal_t where
-    isLeader k' = elem k' leaders -- TODO replace it for all leaders with the popular thing + flightnorm IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ zip leaders (repeat $ S.fromList [flightNorm, thirdOne]) --I GET IT!!!! I have to remove them looooolll!! todo habe hier thirdOne und Ballot rausgenommen, als test wenn es nicht der mehrheit entspricht
-
-{-
-Input:
-n > 0: Number of models to generat
-List of values for k to test
-
-Output:
-Runs experiment and prints results.
--}
-runAndShow :: Int -> [Int] -> IO()
-runAndShow n ks = do
-    putStr $ "WELCOME to the experiment zone :) In your experiment, " ++ show n ++ " Holme-Kim networks with " ++ show totalNrAgs ++
-        " nodes were randomly generated. \n The tested values for the number of leaders were: " ++ show ks ++
-        ". Are you READY for the results? \n"
-    results <- generate (experimentHolme n ks)
-    printTable results
-
-
-
-{-
-Input: A list of aggregated result.
-Output: Prints the results to the console.
--}
-
-printTable :: [(Int, PopularStrat, Results)] -> IO()
-printTable results = do
-    let strategyMap = M.fromListWith (++) [ (s, [(k, r)]) | (k, s, r) <- results]
-    printPopStrategy Popular (strategyMap M.! Popular)
-    printPopStrategy Authentic (strategyMap M.! Authentic)
-    --printStrategy Nomination (strategyMap M.! Nomination) --TODO habe hier Nomination rausgenommen
-    --printStrategy LocalNom (strategyMap M.! LocalNom)
-
-
---ACHTUNG . - .
---TODO xs is ordered the wrong way (decreasing)
-printPopStrategy :: PopularStrat -> [(Int, Results)] -> IO ()
-printPopStrategy s xs = do
-    putStrLn $ "\n=== " ++ show s ++ " ==="
-    printf "%5s %10s %10s %10s %10s %10s %10s %10s\n"
-        "k" "Degree Public" "Degree Leaders" "Rounds" "Ratio" "Success" "Failure" "Partial"
-    mapM_ printRow xs
-  where
-    printRow (k, Results a' b' c' d' e' f' g') =
-        printf "%5d %10.3f %10.3f %10s %10s %10s %10s %10s\n"
-            k a' b' (show c') (show d') (show (e'*100) ++ "%") (show (f'*100) ++ "%") (show (g'*100) ++ "%")
-
---usage in ghci:
-{-
-usage in ghci:
-import Test.QuickCheck
-myModel <- generate arbitrary :: IO SNModel
-
-generate (sublistRec 3 [1,2,3,4,5])
--}
---averageDegreesCSNModel <$> (generate arbitrary :: IO CaseSNM)

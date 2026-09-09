@@ -24,7 +24,7 @@ import Data.List (intercalate)
 
 
 {-
-This module defines the logical language.
+This module defines formulas in both logical languages L_b and L_v.
 It also provides formula simplification and random generation of formulas.
 -}
 
@@ -46,7 +46,7 @@ data Mode = Basic | Variant deriving (Eq, Show, Ord)
 
 {-
 Syntax of Social Network Logic
-A propositional language with two special atoms (Adopted and Connected) and four modal operators (parametrized by threshold in [0,1]):
+Contains two special atoms (Adopted and Connected) and four modal operators (parametrized by threshold in [0,1]):
 
 (1) Infl Basic tau: Social Influence: Agents adopt positions per topic based on the proportion of
     friends in that topic that hold each position.
@@ -58,12 +58,13 @@ A propositional language with two special atoms (Adopted and Connected) and four
     agents (through any topic) based on the proportion of positions they agree on.
 
 
-Forms are assumed to be at least in-update mode-consistent.
-This means, we expect any Form not to contain both Infl Basic and Infl Variant,
-as well as not to contain both Selec Basic and Selec Variant.
-Forms should also not contain modal operators with invalid thresholds (not in [0,1]).
+For model checking, a Form should either represent a formula in L_b (which can be checked using the function isBasicForm)
+or a formula in L_v (which can be checked using the function isVariantForm).
+To check whether a Form is either in L_b or in L_v, the funciton isWellFormedForm can be used.
 
-These restrictions are not enforced in construction but can be checked using the function isWellFormedForm.
+(For simplification, Forms are assumed to be at least in-update mode-consistent.
+This means, we expect any Form not to contain both Infl Basic and Infl Variant,
+as well as not to contain both Selec Basic and Selec Variant.)
 -}
 data Form
   = Top                         -- True Constant
@@ -316,7 +317,7 @@ simStep (Disj fs)      | Top `elem` fs                    = Top
                        | otherwise                        = groupByOperator $ Disj (nubOrd $ concatMap unpack fs) where
                         {-
                          groupByOperator bubbles up modal operators that are shared by more than one element in the list.
-                         This is based on a theorem proved in Chapter 3 of the written report.
+                         This is based on a proposition proved in Chapter 3 of the written report.
                         -}
                           unpack Bot = []
                           unpack (Disj subfs) = map simStep $ filter (Bot /=) subfs
@@ -328,7 +329,7 @@ simStep (Impl f Bot)    = Neg (simStep f)
 
 {-
 Bubble up modal operator, if it's the same on both sides of the implication.
-This is based on a theorem proved in Chapter 3 of the written report.
+This is based on a proposition proved in Chapter 3 of the written report.
   -}
 simStep (Impl f@(Infl mode1 tau1 subF) g@(Infl _ tau2 subG)) | tau1==tau2  = Infl mode1 tau1 (simStep (Impl subF subG)) --assumes in-update mode-consistency
                                                              | otherwise   = Impl (simStep f) (simStep g)
@@ -340,7 +341,7 @@ simStep (Impl f g)     | f==g      = Top
 
 
 {-
-The following simplifications are based on the theorems proved in Chapter 3.
+The following simplifications are based on the propositions proved in Chapter 3.
 -}
 --Eliminate modal operators on Bot or Top.
 simStep (Infl _ _ Bot)  = Bot
