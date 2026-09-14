@@ -685,9 +685,6 @@ simplify myForm
 -}
 
 
-{-
-TODO change it in Appendix, if I do this
--}
 --Makes Forms more readable in the console.
 instance Show Form where
   show Top                   = "⊤"
