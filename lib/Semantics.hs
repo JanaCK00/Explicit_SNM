@@ -98,7 +98,7 @@ Best used with an already simplified Form, to avoid expensive update computation
 (|=) _ Top                                      = True
 (|=) _ Bot                                      = False
 (|=) m (Adopted agent position')                = position' `S.member` lookupDualVal agent (dualVal m M.! thisTopic)
-                                                    where thisTopic = fst $ fromJust $ L.find (\(_, s) -> S.member position' s) (M.toList (positions m))
+                                                    where thisTopic = findTopic position' (positions m)
 (|=) m (Connected topic agent1 agent2)          = agent2 `IntSet.member`((rel m ! topic) V.! agent1)
 (|=) m (Neg f)                                  = not $ m |= f
 (|=) m (Conj fs)                                = all (m |=) fs --returns true on empty list
@@ -113,7 +113,9 @@ Best used with an already simplified Form, to avoid expensive update computation
 
 
 
-
+--Helper function to find the topic a given position belongs to.
+findTopic :: Position -> M.Map Topic (Set Position) -> Topic
+findTopic p tps = fst $ fromJust $ L.find (\(_, s) -> S.member p s) (M.toList tps)
 
 --------------------------------------------------------------------------------
 -- Wrappers for update functions
