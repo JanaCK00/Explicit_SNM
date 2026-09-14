@@ -6,9 +6,8 @@ import SNModel
       SNModel(SNM, rel, nrAgents, dualVal),
        valToDualVal_t)
 import Test.QuickCheck
-  ( Arbitrary (..)
-  , Gen
-  , elements, generate, sublistOf, chooseInt, choose)
+  (  Gen
+  , elements, generate, choose)
 import Test.QuickCheck.Gen (genDouble)
 import GenerationUtils (sublistRec)
 import Data.Set (Set)
@@ -24,7 +23,6 @@ import Semantics
 
 import Control.Monad (replicateM, forM) --for experiment
 import Text.Printf --to print results of experiment
-import Debug.Trace (trace)
 import Data.Maybe (isNothing)
 
 import Syntax (Mode (Basic, Variant))
@@ -48,28 +46,29 @@ It includes:
 {-
 Define necessary Topics, Positions, Maps and Sets of Positions for the case study.
 -}
-flight :: Topic
-flight = T 1
+sustainability :: Topic
+sustainability = T 1
 
-ballot, flightNorm, moneyNorm :: Position
-ballot = P 1
-flightNorm = P 2
-moneyNorm = P 3
+politicalNorm, financialNorm, lifestyleNorm :: Position
+politicalNorm = P 1
+financialNorm = P 2
+lifestyleNorm = P 3
 
-posMapFlight :: M.Map Topic (Set Position)
-posMapFlight = M.singleton flight (S.fromList [ballot, flightNorm, moneyNorm])
+
+posMapSust :: M.Map Topic (Set Position)
+posMapSust = M.singleton sustainability (S.fromList [politicalNorm, lifestyleNorm, financialNorm])
 
 
 {-
-Define proportion of distribution of position ballot in initial network.
-58% of nodes will hold position ballot initially.
+Define proportion of distribution of position politicalNorm in initial network.
+58% of nodes will hold position politicalNorm initially.
 The number is taken from literature.
 -}
 propoBallot :: Double
 propoBallot = 0.58
 
 {-
-Compute the absolute number of nodes who will hold the position ballot initially, according to the proportion.
+Compute the absolute number of nodes who will hold the position politicalNorm initially, according to the proportion.
 With propoBallot = 0.58 -> 70
 -}
 nrBallot :: Int
@@ -100,7 +99,7 @@ threshold = 0.5     --fixed threshold applied throughout the case study
 nParam = totalNrAgs --number of nodes in generated network
 mParam = 3          --number of edges added per node in network generation
 m0Param = 3         --size of starting network in generation
-aParam = 1          --initial attractiveness
+aParam = 0          --initial attractiveness
 --The average number of TF trials per added node is m_t = (m-1) * p_t. For m=3, this means m_t = 2 * p_t.
 
 
@@ -323,7 +322,7 @@ unwrap (SNMCase snm _) = snm
 
 {-
 Generates an SNMCase with arbitrary Holme-Kim Relation,
-and randomly distributed position ballot according to the proportion.
+and randomly distributed position politicalNorm according to the proportion.
 
 p_t: parameter for holme kim (clustering)
 -}
@@ -332,22 +331,22 @@ p_t: parameter for holme kim (clustering)
 randomSNMCase :: Double -> Gen SNMCase
 randomSNMCase p_t = do
         --Generate a random Holme-Kim relation.
-        flightRel <- holmeKim nParam mParam m0Param p_t aParam
-        let rel' = M.singleton flight flightRel
+        sustainabilityRel <- holmeKim nParam mParam m0Param p_t aParam
+        let rel' = M.singleton sustainability sustainabilityRel
             ags = [0..totalNrAgs-1]
-        --Randomly pick the agents who hold the position "ballot".
-        takeBallot <- IntSet.fromList <$> sublistRec nrBallot ags
+        --Randomly pick the agents who hold the position "politicalNorm".
+        takeBallot <- IntSet.fromList <$> sublistRec nrBallot ags --TODO have this be random as well
         --Randomly pick the agents who will hold position TODO.
         nrMoneyNorm <- choose (0,totalNrAgs) --TODO have this be a parameter as well?
         takeMoneyNorm <- IntSet.fromList <$> sublistRec nrMoneyNorm ags
         --Build the set of popular positions.
-        let popular | nrMoneyNorm * 2 > totalNrAgs = S.fromList [ballot, moneyNorm]
-                    | otherwise                    = S.singleton ballot
+        let popular | nrMoneyNorm * 2 > totalNrAgs = S.fromList [politicalNorm, financialNorm]
+                    | otherwise                    = S.singleton politicalNorm
         --Assign the valuation.
-        let val_t' = M.fromList [(ballot, takeBallot), (moneyNorm, takeMoneyNorm)]
-        let dualVal' = M.singleton flight $ valToDualVal_t val_t'
+        let val_t' = M.fromList [(politicalNorm, takeBallot), (financialNorm, takeMoneyNorm)]
+        let dualVal' = M.singleton sustainability $ valToDualVal_t val_t'
         --Return the SNM and the popular positions.
-        return $ SNMCase (SNM totalNrAgs posMapFlight rel' dualVal') popular
+        return $ SNMCase (SNM totalNrAgs posMapSust rel' dualVal') popular
 
 
 {-
@@ -398,8 +397,6 @@ ks: list of values for k to test
 Will generate n SNMCase using the parameter p_t for Holme Kim.
 Will then test each value for k for each intervention strategy on each of the n relations.
 Returns average results over the runs.
-
-ACHTUNG ._.
 -}
 experimentHolme :: Double -> Int -> [Int] -> Gen [(Int, InterventionStrat, Results)]
 experimentHolme p_t n ks = do
@@ -450,7 +447,7 @@ Output: implements sum for [Results]
 -}
 sumResults :: [Results] -> Results
 sumResults = L.foldl' addResults zeroResults where
-    zeroResults = Results 0 0 (Just 0) M.empty 0 0 0--TODO check if it works with [] as last argument, sonst rausholen
+    zeroResults = Results 0 0 (Just 0) M.empty 0 0 0
     addResults (Results a1 b1 c1 d1 e1 f1 g1) (Results a2 b2 c2 d2 e2 f2 g2) = Results (a1+a2) (b1+b2) ((+) <$> c1 <*> c2) (M.unionWith (+) d1 d2) (e1+e2) (f1+f2) (g1+g2)
 
 {-
@@ -464,7 +461,7 @@ data Results = Results
     , adoptRatios   :: M.Map Position Double --Ratio of nodes who hold each position in the final model.
     , fullyAdopted  :: Double                --Number of times all agents adopted the new position in the final model.
     , fullyRejected :: Double                --Number of times no agents adopted the new position in the final model.
-    , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model (--TODO gute Zahl hier finden)
+    , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model.
     } deriving (Show)
 
 {-
@@ -480,7 +477,7 @@ Identifies k leaders according to strategy, runs the experiment and return the r
 runOneGen :: InterventionStrat -> Int -> SNMCase -> Gen Results
 runOneGen popStrat k snmCase = do
     let snm = model snmCase
-    leaders <- getLeaders KRich k (rel snm M.! flight)
+    leaders <- getLeaders KRich k (rel snm M.! sustainability)
     return $ runOne popStrat leaders snmCase
 
 
@@ -498,17 +495,17 @@ runOne :: InterventionStrat -> [Int] -> SNMCase -> Results
 runOne popStrat leaders snmCase   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
     snm                       = model snmCase
     pops                      = popularPos snmCase
-    interveneSNM              = snm {dualVal = M.singleton flight (intervention popStrat pops leaders dualVal_flight)}
-    (avgPublic', avgLeaders') = averageDegrees flightRel leaders
+    interveneSNM              = snm {dualVal = M.singleton sustainability (intervention popStrat pops leaders dualVal_sustainability)}
+    (avgPublic', avgLeaders') = averageDegrees sustainabilityRel leaders
     (finalModel , stab'')     = interleave Basic Basic threshold interveneSNM --TODO either Basic on Basic or Variant on Variant
-    finalDistribution         = posDistribution_t finalModel flight
-    flightRel                 = rel snm M.! flight
+    finalDistribution         = posDistribution_t finalModel sustainability
+    sustainabilityRel                 = rel snm M.! sustainability
     stab'                     = fromIntegral <$> stab''
-    dualVal_flight            = dualVal snm M.! flight
-    (fullyA, fullyR, partSucc)| isNothing (M.lookup flightNorm finalDistribution) = (0.0, 1.0, 0.0)
-                              | finalDistribution M.! flightNorm  == 1.0          = (1.0, 0.0, 1.0)
-                              | finalDistribution M.! flightNorm > 0.5            = (0.0, 0.0, 1.0)
-                              | otherwise                                         = (0, 0, 0)
+    dualVal_sustainability            = dualVal snm M.! sustainability
+    (fullyA, fullyR, partSucc)| isNothing (M.lookup lifestyleNorm finalDistribution) = (0.0, 1.0, 0.0)
+                              | finalDistribution M.! lifestyleNorm  == 1.0          = (1.0, 0.0, 0.0)
+                              | finalDistribution M.! lifestyleNorm > 0.5            = (0.0, 0.0, 1.0) --only bigger than 0.5 but smaller than 1.0
+                              | otherwise                                         = (0, 0, 0)       -- <= 0.5 and >0
 
 
 
@@ -523,8 +520,8 @@ DualVal_t: DualVal of a specific topic
 Output: New dualVal_t where the leaders have their new positions after intervention.
 -}
 intervention :: InterventionStrat -> Set Position -> [Int] -> IntMap (Set Position) -> IntMap (Set Position)
-intervention Authentic _ leaders dualVal_t = IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ map (, S.singleton flightNorm) leaders --insert flightnorm for all leaders
-intervention Popular pops leaders dualVal_t = IntMap.union (IntMap.fromList $ map (, S.insert flightNorm pops) leaders) dualVal_t
+intervention Authentic _ leaders dualVal_t = IntMap.unionWith S.union dualVal_t $ IntMap.fromList $ map (, S.singleton lifestyleNorm) leaders --insert lifestyleNorm for all leaders
+intervention Popular pops leaders dualVal_t = IntMap.union (IntMap.fromList $ map (, S.insert lifestyleNorm pops) leaders) dualVal_t
 
 {-
 Input:
@@ -555,12 +552,10 @@ printTable results = do
     let strategyMap = M.fromListWith (++) [ (s, [(k, r)]) | (k, s, r) <- results]
     printPopStrategy Popular (strategyMap M.! Popular)
     printPopStrategy Authentic (strategyMap M.! Authentic)
-    --printStrategy Nomination (strategyMap M.! Nomination) --TODO habe hier Nomination rausgenommen
-    --printStrategy LocalNom (strategyMap M.! LocalNom)
 
 
---ACHTUNG . - .
---TODO xs is ordered the wrong way (decreasing)
+
+--Print to console
 printPopStrategy :: InterventionStrat -> [(Int, Results)] -> IO ()
 printPopStrategy s xs = do
     putStrLn $ "\n=== " ++ show s ++ " ==="
