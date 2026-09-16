@@ -1,4 +1,6 @@
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 module CaseStudy where
 
 import SNModel
@@ -25,7 +27,7 @@ import Control.Monad (replicateM, forM) --for experiment
 import Text.Printf --to print results of experiment
 import Data.Maybe (isNothing)
 
-import Syntax (Mode (Basic, Variant))
+import Syntax (Mode (Basic))
 import Types
 
 
@@ -33,7 +35,7 @@ import Types
 This module implements the necessary code for the case study.
 It includes:
  (1) an implementation of Holme-Kim network generation;
- (2) random generation of SNMs for the case study
+ (2) generation of SNMs for the case study;
  (3) running the experiment and printing the results to the console.
 -}
 
@@ -60,48 +62,19 @@ posMapSust = M.singleton sustainability (S.fromList [politicalNorm, lifestyleNor
 
 
 {-
-Define proportion of distribution of position politicalNorm in initial network.
-58% of nodes will hold position politicalNorm initially.
-The number is taken from literature.
--}
-propoBallot :: Double
-propoBallot = 0.58
-
-{-
-Compute the absolute number of nodes who will hold the position politicalNorm initially, according to the proportion.
-With propoBallot = 0.58 -> 70
--}
-nrBallot :: Int
-nrBallot = computeProportion propoBallot totalNrAgs
-
-{-
-Input:
-0<=p<=1 proportion
-n
-
-Computes the integer number corresponding to a given proportion of a total (rounded to the nearest integer).
--}
-computeProportion :: (RealFrac a, Integral b, Integral c) => a -> c -> b
-computeProportion p n = round (p * fromIntegral n + 1e-9)
-
-
-
-{-
 Define fixed parameters for Holme-Kim network generation.
 -}
 
 totalNrAgs, m0Param, mParam, nParam, aParam  :: Int
-threshold :: Double
+thresholdParam :: Double
 
 
-totalNrAgs = 120    --number of agents in the generated networks
-threshold = 0.5     --fixed threshold applied throughout the case study
-nParam = totalNrAgs --number of nodes in generated network
-mParam = 3          --number of edges added per node in network generation
-m0Param = 3         --size of starting network in generation
-aParam = 0          --initial attractiveness
---The average number of TF trials per added node is m_t = (m-1) * p_t. For m=3, this means m_t = 2 * p_t.
-
+totalNrAgs     = 120        --number of agents in the generated networks
+thresholdParam = 0.5        --fixed threshold applied throughout the case study
+nParam         = totalNrAgs --number of nodes in generated network
+mParam         = 3          --number of edges added per node in network generation
+m0Param        = 3          --size of starting network in generation
+aParam         = 0          --initial attractiveness
 
 
 --------------------------------------------------------------------------------
@@ -118,13 +91,6 @@ initialCore m_0 = initialCoreRec 0 where
                          | otherwise = filter (/= step) [0..(m_0-1)] : initialCoreRec (step + 1)
 
 
-
---TODO: write tests
---zb number of edges
---number of nodes
---auch gutes Zeichen: average degree macht sinn
---vlt auch noch clustering degree berechnen?x
---ist es symmetrisch?
 
 {-
 Generates a Holme-Kim relation
@@ -186,12 +152,14 @@ getStepList xs p_t l = do
 
 {-
 Input: p_t, d' (random double in range [0,1])
-Returns TFStep if d<= p_t
+Returns TFStep based on the probability p_t.
 -}
 pickStep :: Double -> Double -> Step
-pickStep p_t d'   | d' <= p_t = TFStep
-                  | otherwise = PAStep
-
+pickStep p_t d'
+    | p_t <= 0 = PAStep -- For p_t = 0, no step is a TF trial (= pure preferential attachment).
+    | p_t >= 1 = TFStep -- For p_t = 1, every step is a TF trial.
+    | d' < p_t = TFStep
+    | otherwise = PAStep
 
 {-
 Input:
@@ -303,7 +271,7 @@ translate xs = V.fromList $  L.map IntSet.fromList xs
 Define a wrapper type to allow arbitrary generation of SNMs that fulfill the defined
 properties for the case study.
 
-Additionally allows to store the majority opinion combination.
+Additionally allows to store the set of popular positions.
 -}
 
 data SNMCase = SNMCase
@@ -312,19 +280,12 @@ data SNMCase = SNMCase
     } deriving (Eq, Show)
 
 
-{-
-TODO delete if unnecessary, used for testing
-unwraps the newtype SNMCase
--}
-unwrap :: SNMCase -> SNModel
-unwrap (SNMCase snm _) = snm
-
 
 {-
 Generates an SNMCase with arbitrary Holme-Kim Relation,
-and randomly distributed position politicalNorm according to the proportion.
+and randomly distributed positions politicalNorm and financialNorm.
 
-p_t: parameter for holme kim (clustering)
+p_t: parameter for Holme Kim (tunable clustering)
 -}
 
 
@@ -335,15 +296,16 @@ randomSNMCase p_t = do
         let rel' = M.singleton sustainability sustainabilityRel
             ags = [0..totalNrAgs-1]
         --Randomly pick the agents who hold the position "politicalNorm".
-        takeBallot <- IntSet.fromList <$> sublistRec nrBallot ags --TODO have this be random as well
-        --Randomly pick the agents who will hold position TODO.
-        nrMoneyNorm <- choose (0,totalNrAgs) --TODO have this be a parameter as well?
+        nrPoliticalNorm <- choose (0,totalNrAgs)
+        takePoliticalNorm <- IntSet.fromList <$> sublistRec nrPoliticalNorm ags
+        --Randomly pick the agents who will hold the position "moneyNorm".
+        nrMoneyNorm <- choose (0,totalNrAgs)
         takeMoneyNorm <- IntSet.fromList <$> sublistRec nrMoneyNorm ags
         --Build the set of popular positions.
-        let popular | nrMoneyNorm * 2 > totalNrAgs = S.fromList [politicalNorm, financialNorm]
-                    | otherwise                    = S.singleton politicalNorm
+        let popular = S.fromList $ [politicalNorm | nrPoliticalNorm * 2 > totalNrAgs]
+                                     ++ [financialNorm | nrMoneyNorm * 2 > totalNrAgs]
         --Assign the valuation.
-        let val_t' = M.fromList [(politicalNorm, takeBallot), (financialNorm, takeMoneyNorm)]
+        let val_t' = M.fromList [(politicalNorm, takePoliticalNorm), (financialNorm, takeMoneyNorm)]
         let dualVal' = M.singleton sustainability $ valToDualVal_t val_t'
         --Return the SNM and the popular positions.
         return $ SNMCase (SNM totalNrAgs posMapSust rel' dualVal') popular
@@ -354,6 +316,8 @@ Example usage in ghci:
 import Test.QuickCheck
 generate $ randomSNMCase 0.5
 -}
+
+
 
 
 
@@ -371,7 +335,7 @@ ourPts = [0, 0.5, 0.8]
 
 --The values for the number of leaders picked.
 ourKs :: [Int]
-ourKs = [15, 20, 25, 30]
+ourKs = [20, 25, 30]
 
 {-
 Data type for the intervention strategy.
@@ -387,7 +351,7 @@ Number of agents -> 120
 parameters of holme kim -> as defined above
 Threshold -> 0.5
 InflMode -> Basic
-SelecMode -> Basic -> easier to justify
+SelecMode -> Basic
 
 Input:
 p_t: current paramter for holme kim
@@ -451,16 +415,16 @@ sumResults = L.foldl' addResults zeroResults where
     addResults (Results a1 b1 c1 d1 e1 f1 g1) (Results a2 b2 c2 d2 e2 f2 g2) = Results (a1+a2) (b1+b2) ((+) <$> c1 <*> c2) (M.unionWith (+) d1 d2) (e1+e2) (f1+f2) (g1+g2)
 
 {-
-Data type to store results of experiment. Usually a single run of experiment, but can also be used to store an average.
-TODO can be extended if necessary
+Data type to store results of experiment. Usually a single run of experiment,
+but can also be used to store an average.
 -}
 data Results = Results
-    { avgPublic     :: Double                --Initial average degree of non-leader nodes
-    , avgLeaders    :: Double                --Initial average degree of leader nodes
-    , stab          :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
-    , adoptRatios   :: M.Map Position Double --Ratio of nodes who hold each position in the final model.
-    , fullyAdopted  :: Double                --Number of times all agents adopted the new position in the final model.
-    , fullyRejected :: Double                --Number of times no agents adopted the new position in the final model.
+    { avgPublic      :: Double                --Initial average degree of non-leader nodes
+    , avgLeaders     :: Double                --Initial average degree of leader nodes
+    , stab           :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
+    , adoptRatios    :: M.Map Position Double --Ratio of nodes who hold each position in the final model.
+    , fullyAdopted   :: Double                --Number of times all agents adopted the new position in the final model.
+    , fullyRejected  :: Double                --Number of times no agents adopted the new position in the final model.
     , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model.
     } deriving (Show)
 
@@ -477,7 +441,7 @@ Identifies k leaders according to strategy, runs the experiment and return the r
 runOneGen :: InterventionStrat -> Int -> SNMCase -> Gen Results
 runOneGen popStrat k snmCase = do
     let snm = model snmCase
-    leaders <- getLeaders KRich k (rel snm M.! sustainability)
+    leaders <- getLeaders k (rel snm M.! sustainability)
     return $ runOne popStrat leaders snmCase
 
 
@@ -497,7 +461,7 @@ runOne popStrat leaders snmCase   = Results avgPublic' avgLeaders' stab' finalDi
     pops                      = popularPos snmCase
     interveneSNM              = snm {dualVal = M.singleton sustainability (intervention popStrat pops leaders dualVal_sustainability)}
     (avgPublic', avgLeaders') = averageDegrees sustainabilityRel leaders
-    (finalModel , stab'')     = interleave Basic Basic threshold interveneSNM --TODO either Basic on Basic or Variant on Variant
+    (finalModel , stab'')     = interleave Basic Basic thresholdParam interveneSNM
     finalDistribution         = posDistribution_t finalModel sustainability
     sustainabilityRel                 = rel snm M.! sustainability
     stab'                     = fromIntegral <$> stab''
@@ -584,18 +548,14 @@ generate (sublistRec 3 [1,2,3,4,5])
 
 {-
 Input: SNmodel, Topic
-Output: Returns a list of tuples. Each tuple says which fraction of agents in the network hold that position.
+Output: Returns a map from positions of the input topic to fractions.
+Each entry says which fraction of agents in the network hold that position.
 Positions that aren't held by any node don't appear in the result.
-The output list will be sorted in ascending order of Position (M.toList returs it this way).
 -}
 posDistribution_t :: SNModel -> Topic  -> M.Map Position Double
 posDistribution_t snm t =  M.map (\s -> fromIntegral (IntSet.size s) / fromIntegral nrAgs) val_t' where
     val_t' = val_t snm t
     nrAgs = nrAgents snm --assume >0
-
---TODO test
-
-
 
 
 {-
@@ -623,55 +583,42 @@ averageDegrees rel' leaders'= (avgPublic', avgLeaders') where
     avgLeaders' = fromIntegral leadersDegree / fromIntegral nrleaders
 
 
-
-
 {-
-Data type for the identification strategies for leaders:
+Input: k, relation
 
-KRich: Highest degree nodes in the network. -> opinion leaders
-Random: Randomly chosen nodes.              -> volunteers
+Output: k leaders chosen according to highest degree and random tie breaking
 -}
-data Strategy = Random | KRich deriving (Show, Eq, Ord) --TODO will probably not use Random, might just show that the average degree is way lower
+getLeaders :: Int -> Relation -> Gen [Int]
+getLeaders = findKrich
 
-{-
-Input:
-Leader identification strategy
-Number of Leaders to identify
-Relation
-
-Output:
-List of leaders
-
---TODO test all helper functions, and this one
--}
-getLeaders :: Strategy -> Int -> Relation -> Gen [Int]
-getLeaders KRich nrLeaders rel' = return $ findKrich nrLeaders rel'
-getLeaders Random nrLeaders rel' = do
-    sublistRec nrLeaders [0..V.length rel'-1]
 
 {-
 Input
 k: number of leaders to identify
-Relation
+rel': Relation
 
 Output:
 Tuple of (List of non-leaders, List of leaders)
+where leaders are the k highest-degree nodes.
 
-TODO maybe I have to change this?
-(For a tie, there is no defined rule.)
-
-TODO test
+In case of a tie at the cutoff, we randomly choose which nodes to include as leaders.
 -}
-
-findKrich :: Int -> Relation -> [Int]
-findKrich k rel' = take k $ map fst $ degreeListDesc rel'
+findKrich :: Int -> Relation -> Gen [Int]
+findKrich k rel' | k <= 0             = return []
+                 | k >= V.length rel' = return [0 .. V.length rel' - 1]
+                 | otherwise          = do
+                                            let degrees = degreeListDesc rel'
+                                                cutoffDegree = snd (degrees !! (k - 1))
+                                                aboveCutoff = map fst $ takeWhile (\(_, d) -> d > cutoffDegree) degrees
+                                                atCutoff = map fst $ filter (\(_, d) -> d == cutoffDegree) degrees
+                                                nrNeeded = k - length aboveCutoff
+                                            chosenFromTie <- sublistRec nrNeeded atCutoff
+                                            return (aboveCutoff ++ chosenFromTie)
 
 {-
 Input: Relation
 Output: a list of tuples (agent, number of friends),
-    sorted on descending number of friends
-
-TODO test
+    sorted on descending number of friends.
 -}
 degreeListDesc :: Relation -> [(Int, Int)]
 degreeListDesc = L.sortOn (Down . snd) . V.toList . V.imap (\i ags -> (i, IntSet.size ags))

@@ -114,3 +114,19 @@ SECTION: Syntax
         prop "Testing if Forms returned by getRandomFormModel are well-formed." $ do
             wellFormedRandomFormModel
 
+
+{-
+SECTION Case Study
+-}
+
+    describe "Testing Holme-Kim network generation" $ do
+        prop "Testing if generated networks have correct numner of nodes." $ do
+            prop_holmeKimNrNodes
+        prop "Testing if generated networks have correct numner of edges." $ do
+            prop_holmeKimNrEdges
+        prop "Testing if generated networks are symmetric." $ do
+            prop_holmeKimSymmetric
+        prop "Testing if generated networks do not have self-loops." $ do
+            prop_holmeKimNoSelfLoops
+        prop "Testing if generated networks satisfy minimal degree." $ do
+            prop_newNodesHaveAtLeastMEdges

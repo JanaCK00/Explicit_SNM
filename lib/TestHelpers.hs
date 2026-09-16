@@ -15,6 +15,7 @@ import Data.IntSet (IntSet)
 import Types
 import Test.QuickCheck.Gen
 import GenerationUtils (isOfSizeBetween, randomPosMap)
+import CaseStudy
 
 
 propo1 :: Form
@@ -224,7 +225,10 @@ selecVarNotChangeDualVal tau m = dualVal m == dualVal m' where
     tau' = properTau tau
 
 
---Checks if the function getRandomFormModel returns a well-formed form with the mode and matching the input SNModel.
+{-
+Checks if the function getRandomFormModel returns a well-formed form with
+the mode and matching the input SNModel.
+-}
 wellFormedRandomFormModel :: SNModel -> Property
 wellFormedRandomFormModel snm =
     forAll (elements [Basic, Variant]) $ \mode ->
@@ -498,6 +502,51 @@ arbitraryWellFormedInput = do
     return (n, tps)
 
 
---TODO add testing for case study
+
+-----------------------------
+--Tests for case study
+----------------------------
+
+{-
+Counts the number of edges in an undirected
+network (represented as a symmetric directed network).
+-}
+nrUndirectedEdges :: Relation -> Int
+nrUndirectedEdges rel' = V.sum (V.map IntSet.size rel') `div` 2
 
 
+{-
+Computes the number of expected edges in an undirected Holme-Kim network.
+-}
+nrEdgesholmeKim :: Int -> Int -> Int -> Int
+nrEdgesholmeKim n m m_0 = (m_0 * (m_0 - 1)) `div` 2 --edges in the initial core
+                            + m * (n - m_0)         --edges added with the new nodes
+
+
+--Checks whether generated networks have correct number of nodes.
+prop_holmeKimNrNodes :: Property
+prop_holmeKimNrNodes = forAll (holmeKim nParam mParam m0Param 0.5 aParam) $ \rel' ->
+                         V.length rel' == nParam
+
+
+--Checks whether generated networks have correct number of edges.
+prop_holmeKimNrEdges :: Property
+prop_holmeKimNrEdges =  forAll (elements ourPts) $ \p_t ->
+                          forAll (holmeKim nParam mParam m0Param p_t aParam) $ \rel' ->
+                              nrUndirectedEdges rel' == nrEdgesholmeKim nParam mParam m0Param
+
+--Checks whether generated networks are symmetric (to represent undirected networks).
+prop_holmeKimSymmetric :: Property
+prop_holmeKimSymmetric = forAll (holmeKim nParam mParam m0Param 0.5 aParam) isSym
+
+
+--Checks whether generated networks don't have self-loops.
+prop_holmeKimNoSelfLoops :: Property
+prop_holmeKimNoSelfLoops = forAll (holmeKim nParam mParam m0Param 0.5 aParam) noSelfLoops
+
+
+--Checks whether each node that is not in the initial core has at least m edges.
+prop_newNodesHaveAtLeastMEdges :: Property
+prop_newNodesHaveAtLeastMEdges = forAll (elements ourPts) $ \p_t ->
+                                    forAll (holmeKim nParam mParam m0Param p_t aParam) $ \rel' ->
+                                      all (\i -> IntSet.size (rel' V.! i) >= mParam) [m0Param .. nParam - 1]
