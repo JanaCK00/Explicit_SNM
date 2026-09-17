@@ -22,7 +22,6 @@ import qualified Data.Vector as V
 import qualified Data.List as L
 import Data.Ord (Down(..))
 import Semantics
-
 import Control.Monad (replicateM, forM) --for experiment
 import Text.Printf --to print results of experiment
 import Data.Maybe (isNothing)
@@ -106,7 +105,7 @@ holmeKim n m m_0 = holmeKimRec (n-m_0) m cur where
     cur = initialCore m_0
 
 {-
-Recursively genereate Holme-Kim relation
+Recursively generate Holme-Kim relation.
 Input:
 Number of remaining nodes to add
 m: Number of edges to add per new node
@@ -130,7 +129,7 @@ holmeKimRec n m cur p_t att = do
 
 {-
 Data type for both types of steps in Holme-Kim generation.
-PAStep is a preferential attachement step.
+PAStep is a preferential attachment step.
 TFStep is a triad formation step.
 -}
 data Step = PAStep | TFStep deriving (Eq, Show)
@@ -298,14 +297,14 @@ randomSNMCase p_t = do
         --Randomly pick the agents who hold the position "politicalNorm".
         nrPoliticalNorm <- choose (0,totalNrAgs)
         takePoliticalNorm <- IntSet.fromList <$> sublistRec nrPoliticalNorm ags
-        --Randomly pick the agents who will hold the position "moneyNorm".
-        nrMoneyNorm <- choose (0,totalNrAgs)
-        takeMoneyNorm <- IntSet.fromList <$> sublistRec nrMoneyNorm ags
+        --Randomly pick the agents who will hold the position "financialNorm".
+        nrFinancialNorm <- choose (0,totalNrAgs)
+        takeFinancialNorm <- IntSet.fromList <$> sublistRec nrFinancialNorm ags
         --Build the set of popular positions.
         let popular = S.fromList $ [politicalNorm | nrPoliticalNorm * 2 > totalNrAgs]
-                                     ++ [financialNorm | nrMoneyNorm * 2 > totalNrAgs]
+                                     ++ [financialNorm | nrFinancialNorm * 2 > totalNrAgs]
         --Assign the valuation.
-        let val_t' = M.fromList [(politicalNorm, takePoliticalNorm), (financialNorm, takeMoneyNorm)]
+        let val_t' = M.fromList [(politicalNorm, takePoliticalNorm), (financialNorm, takeFinancialNorm)]
         let dualVal' = M.singleton sustainability $ valToDualVal_t val_t'
         --Return the SNM and the popular positions.
         return $ SNMCase (SNM totalNrAgs posMapSust rel' dualVal') popular
@@ -354,7 +353,7 @@ InflMode -> Basic
 SelecMode -> Basic
 
 Input:
-p_t: current paramter for holme kim
+p_t: current parameter for holme kim
 n: Number of models to generate
 ks: list of values for k to test
 
@@ -364,19 +363,27 @@ Returns average results over the runs.
 -}
 experimentHolme :: Double -> Int -> [Int] -> Gen [(Int, InterventionStrat, Results)]
 experimentHolme p_t n ks = do
+    --Generate n models with given p_t.
     caseModels <- replicateM n (randomSNMCase p_t)
-    allResults <- forM caseModels $ \rel' ->
-        forM ks $ \k ->
+    --For each model, each value of k and each strategy, run an interleaving.
+    allResults <- forM caseModels $ \snmCase -> do
+        --Extract the network.
+        let sustainabilityRel = rel (model snmCase) M.! sustainability
+        forM ks $ \k -> do
+            --Pick leaders once for both strategies.
+            leaders <- getLeaders k sustainabilityRel
             forM [Popular, Authentic] $ \interventionStrat -> do
-                resultOne <- runOneGen interventionStrat k rel'
+                let resultOne = runOne interventionStrat leaders snmCase
                 pure (k, interventionStrat, resultOne)
     return $ aggregate ks (concat $ concat allResults)
+
+
 
 
 {-
 Input:
 List of values for k
-List of experiment results inlcuding k and Strategy.
+List of experiment results including k and Strategy.
 
 Output:
 Aggregates the results by k and Strategy, to display average values across the generated models.
@@ -428,27 +435,12 @@ data Results = Results
     , partialSuccess :: Double               --Number of times more than 50% of all agents adopted the new position in the final model.
     } deriving (Show)
 
-{-
-Input:
-Leader Identification Strategy
-0 < k <= totalNrAgs: number of leaders
-SNMCase
-
-Output:
-Identifies k leaders according to strategy, runs the experiment and return the results.
-
--}
-runOneGen :: InterventionStrat -> Int -> SNMCase -> Gen Results
-runOneGen popStrat k snmCase = do
-    let snm = model snmCase
-    leaders <- getLeaders k (rel snm M.! sustainability)
-    return $ runOne popStrat leaders snmCase
 
 
 
 {-
 Input:
-Popularty Strategy
+Intervention strategy
 List of leaders (0 < length <= nr of Agents)
 SNMCase
 
@@ -469,14 +461,14 @@ runOne popStrat leaders snmCase   = Results avgPublic' avgLeaders' stab' finalDi
     (fullyA, fullyR, partSucc)| isNothing (M.lookup lifestyleNorm finalDistribution) = (0.0, 1.0, 0.0)
                               | finalDistribution M.! lifestyleNorm  == 1.0          = (1.0, 0.0, 0.0)
                               | finalDistribution M.! lifestyleNorm > 0.5            = (0.0, 0.0, 1.0) --only bigger than 0.5 but smaller than 1.0
-                              | otherwise                                         = (0, 0, 0)       -- <= 0.5 and >0
+                              | otherwise                                            = (0, 0, 0)       -- <= 0.5 and >0
 
 
 
 
 {-
 Input:
-Popularity Strategy
+Intervention Strategy
 Set of popular positions
 List of leaders
 DualVal_t: DualVal of a specific topic
@@ -490,7 +482,7 @@ intervention Popular pops leaders dualVal_t = IntMap.union (IntMap.fromList $ ma
 {-
 Input:
 p_t: Parameter for Holme Kim
-n > 0: Number of models to generat
+n > 0: Number of models to generate
 List of values for k to test
 
 Output:
@@ -510,36 +502,43 @@ runAndShow p_t n ks = do
 Input: A list of aggregated result.
 Output: Prints the results to the console.
 -}
-
 printTable :: [(Int, InterventionStrat, Results)] -> IO()
 printTable results = do
     let strategyMap = M.fromListWith (++) [ (s, [(k, r)]) | (k, s, r) <- results]
-    printPopStrategy Popular (strategyMap M.! Popular)
-    printPopStrategy Authentic (strategyMap M.! Authentic)
+    printStrategy Popular (strategyMap M.! Popular)
+    printStrategy Authentic (strategyMap M.! Authentic)
 
 
 
---Print to console
-printPopStrategy :: InterventionStrat -> [(Int, Results)] -> IO ()
-printPopStrategy s xs = do
+--Print to console.
+printStrategy :: InterventionStrat -> [(Int, Results)] -> IO ()
+printStrategy s xs = do
     putStrLn $ "\n=== " ++ show s ++ " ==="
-    printf "%5s %10s %10s %10s %10s %10s %10s %10s\n"
-        "k" "Degree Public" "Degree Leaders" "Rounds" "Ratio" "Success" "Failure" "Partial"
+    printf "%5s %12s %12s %10s %8s %8s %8s %9s %9s %9s\n"
+        "k"
+        "Degree Public"
+        "Degree Leaders"
+        "Rounds"
+        "P1"
+        "P2"
+        "P3"
+        "Success"
+        "Failure"
+        "Partial"
     mapM_ printRow xs
   where
     printRow (k, Results a' b' c' d' e' f' g') =
-        printf "%5d %10.3f %10.3f %10s %10s %10s %10s %10s\n"
-            k a' b' (show c') (show d') (show (e'*100) ++ "%") (show (f'*100) ++ "%") (show (g'*100) ++ "%")
-
---usage in ghci:
-{-
-usage in ghci:
-import Test.QuickCheck
-myModel <- generate arbitrary :: IO SNModel
-
-generate (sublistRec 3 [1,2,3,4,5])
--}
---averageDegreesCSNModel <$> (generate arbitrary :: IO CaseSNM)
+        printf "%5d %12.3f %12.3f %10s %8.3f %8.3f %8.3f %9.2f%% %9.2f%% %9.2f%%\n"
+            k
+            a'
+            b'
+            (show c')
+            (M.findWithDefault 0 politicalNorm d')
+            (M.findWithDefault 0 financialNorm d')
+            (M.findWithDefault 0 lifestyleNorm d')
+            (e' * 100)
+            (f' * 100)
+            (g' * 100)
 
 
 --------------------------------------------------------------------------------
@@ -598,8 +597,7 @@ k: number of leaders to identify
 rel': Relation
 
 Output:
-Tuple of (List of non-leaders, List of leaders)
-where leaders are the k highest-degree nodes.
+List of the k highest-degree nodes.
 
 In case of a tie at the cutoff, we randomly choose which nodes to include as leaders.
 -}
@@ -622,3 +620,161 @@ Output: a list of tuples (agent, number of friends),
 -}
 degreeListDesc :: Relation -> [(Int, Int)]
 degreeListDesc = L.sortOn (Down . snd) . V.toList . V.imap (\i ags -> (i, IntSet.size ags))
+
+
+
+------------------------------------------------------------------------------
+--Additional experiment to test the impact of
+--the prevalence of the other two positions.
+------------------------------------------------------------------------------
+
+--Type to store a combination of prevalence of P 1 and P 2 in an initial model.
+type PrevalenceCombo = (Double, Double)
+
+
+{-
+Hardcoded prevalence combinations used for the experiment.
+We test balanced (0.5), elevated (0.7) and high prevalence (0.9).
+As holding or not holding a position is (almost) symmetrical for threshold = 0.5, we do not test
+values below 0.5.
+As the two positions are symmetrical, we only need 6 combinations.
+-}
+prevalenceCombinations :: [PrevalenceCombo]
+prevalenceCombinations =
+    [ (0.5, 0.5)
+    , (0.5, 0.7)
+    , (0.5, 0.9)
+    , (0.7, 0.7)
+    , (0.7, 0.9)
+    , (0.9, 0.9)
+    ]
+
+
+{-
+Input:
+sustainabilityRel: Relation
+p1: prevalence for P 1
+p2: prevalence for P 2
+
+Output: Generate an SNMCase with given relation and given prevalences.
+-}
+makeCaseWithPrevalence :: Relation -> Double  -> Double -> Gen SNMCase
+makeCaseWithPrevalence sustainabilityRel p1 p2 = do
+    let ags = [0 .. totalNrAgs - 1]
+        --Find corresponding number of agents for the prevalence.
+        nrP1 = round (p1 * fromIntegral totalNrAgs)
+        nrP2 = round (p2 * fromIntegral totalNrAgs)
+    --Randomly pick the agents who hold P 1.
+    takeP1 <-IntSet.fromList <$> sublistRec nrP1 ags
+    --Randomly pick the agents who hold P 2.
+    takeP2 <- IntSet.fromList <$> sublistRec nrP2 ags
+    --Build the set of popular positions.
+    let popular = S.fromList $ [politicalNorm | p1 > 0.5]
+                ++ [financialNorm | p2 > 0.5]
+    --Assign the valuation.
+        val_t' = M.fromList [ (politicalNorm, takeP1), (financialNorm, takeP2)]
+        dualVal' = M.singleton sustainability $ valToDualVal_t val_t'
+    --Assign the relation.
+        rel' = M.singleton sustainability sustainabilityRel
+    --Return the SNM and the popular positions.
+    return $ SNMCase (SNM totalNrAgs posMapSust rel' dualVal') popular
+
+
+{-
+Input:
+n: Number of networks to generate.
+k: Fixed value for number of opinion leaders.
+-}
+experimentPrevalence :: Int -> Int -> Gen [(PrevalenceCombo, InterventionStrat, Results)]
+experimentPrevalence n k = do
+    --Generate networks.
+    networks <- replicateM n $ holmeKim nParam mParam m0Param 0.5 aParam
+    --For each network, each prevalence combo and each strategy, run an interleaving.
+    allResults <-
+        forM networks $ \network -> do
+            --Pick leaders once per network.
+            leaders <- getLeaders k network
+            forM prevalenceCombinations $ \(p1, p2) -> do
+                snmCase <- makeCaseWithPrevalence network p1 p2
+                forM [Popular, Authentic] $ \strategy -> do
+                    let result = runOne strategy leaders snmCase
+                    pure ((p1, p2), strategy, result)
+    return $ aggregatePrevalence $ concat $ concat allResults
+
+
+
+{-
+Input:
+List of experiment results including k and Strategy.
+
+Output:
+Aggregates the results by prevalence combo and Strategy, to display average values across the generated models.
+-}
+aggregatePrevalence :: [(PrevalenceCombo, InterventionStrat, Results)] -> [(PrevalenceCombo, InterventionStrat, Results)]
+aggregatePrevalence results =
+    [ (combo, s, averageResult [x | (combo', s', x) <- results, combo == combo', s == s'])
+    | combo <- prevalenceCombinations
+    , s <- [Popular, Authentic]
+    ]
+
+{-
+Input:
+n > 0: Number of models to generate
+k: fixed number of leaders to test
+
+Output:
+Runs prevalence experiment and prints results.
+-}
+runAndShowPrevalence :: Int -> Int -> IO ()
+runAndShowPrevalence n k = do
+    putStr $ "WELCOME to the PREVALENCE experiment zone :) In your experiment, " ++ show n ++ " Holme-Kim networks with p_t = 0.5 and "++ show totalNrAgs ++
+        " nodes were randomly generated. \n The tested value for the number of leaders was " ++ show k ++
+        ". Are you READY for the results? \n"
+    results <- generate (experimentPrevalence n k)
+    printTablePrevalence results
+
+
+{-
+Input: A list of aggregated results of prevalence experiment.
+Output: Prints the results to the console.
+-}
+printTablePrevalence :: [(PrevalenceCombo, InterventionStrat, Results)] -> IO ()
+printTablePrevalence results = do
+    let strategyMap =  M.fromListWith (++) [ (s, [(combo, r)]) | (combo, s, r) <- results]
+    printPrevalence Popular (strategyMap M.! Popular)
+    printPrevalence Authentic (strategyMap M.! Authentic)
+
+
+
+--Print prevalence experiment to console.
+printPrevalence :: InterventionStrat -> [(PrevalenceCombo, Results)] -> IO ()
+printPrevalence s xs = do
+    putStrLn $ "\n=== " ++ show s ++ " ==="
+    printf "%8s %8s %12s %12s %10s %8s %8s %8s %9s %9s %9s\n"
+        "P1"
+        "P2"
+        "Degree Public"
+        "Degree Leaders"
+        "Rounds"
+        "P1"
+        "P2"
+        "P3"
+        "Success"
+        "Failure"
+        "Majority"
+    mapM_ printRow xs
+  where
+    printRow ((p1, p2), Results a' b' c' d' e' f' g') =
+        printf "%8.2f %8.2f %12.3f %12.3f %10s %8.3f %8.3f %8.3f %9.2f%% %9.2f%% %9.2f%%\n"
+            p1
+            p2
+            a'
+            b'
+            (show c')
+            (M.findWithDefault 0 politicalNorm d')
+            (M.findWithDefault 0 financialNorm d')
+            (M.findWithDefault 0 lifestyleNorm d')
+            (e' * 100)
+            (f' * 100)
+            ((e' + g') * 100)
+
