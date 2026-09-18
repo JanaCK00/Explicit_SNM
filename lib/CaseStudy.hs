@@ -455,14 +455,13 @@ runOne popStrat leaders snmCase   = Results avgPublic' avgLeaders' stab' finalDi
     (avgPublic', avgLeaders') = averageDegrees sustainabilityRel leaders
     (finalModel , stab'')     = interleave Basic Basic thresholdParam interveneSNM
     finalDistribution         = posDistribution_t finalModel sustainability
-    sustainabilityRel                 = rel snm M.! sustainability
+    sustainabilityRel         = rel snm M.! sustainability
     stab'                     = fromIntegral <$> stab''
-    dualVal_sustainability            = dualVal snm M.! sustainability
-    (fullyA, fullyR, partSucc)| isNothing (M.lookup lifestyleNorm finalDistribution) = (0.0, 1.0, 0.0)
-                              | finalDistribution M.! lifestyleNorm  == 1.0          = (1.0, 0.0, 0.0)
+    dualVal_sustainability    = dualVal snm M.! sustainability
+    (fullyA, fullyR, partSucc)| isNothing (M.lookup lifestyleNorm finalDistribution) = (0.0, 1.0, 0.0) --full failure
+                              | finalDistribution M.! lifestyleNorm  == 1.0          = (1.0, 0.0, 0.0) --full adoption
                               | finalDistribution M.! lifestyleNorm > 0.5            = (0.0, 0.0, 1.0) --only bigger than 0.5 but smaller than 1.0
                               | otherwise                                            = (0, 0, 0)       -- <= 0.5 and >0
-
 
 
 
@@ -639,11 +638,34 @@ As holding or not holding a position is (almost) symmetrical for threshold = 0.5
 values below 0.5.
 As the two positions are symmetrical, we only need 6 combinations.
 -}
+--TODO change back
 prevalenceCombinations :: [PrevalenceCombo]
 prevalenceCombinations =
-    [ (0.5, 0.5)
+    [ (0.1, 0.1)
+    , (0.1, 0.3)
+    , (0.1, 0.49)
+    , (0.1, 0.5)
+    , (0.1, 0.51)
+    , (0.1, 0.7)
+    , (0.1, 0.9)
+    , (0.3, 0.3)
+    , (0.3, 0.49)
+    , (0.3, 0.5)
+    , (0.3, 0.51)
+    , (0.3, 0.7)
+    , (0.3, 0.9)
+    , (0.49, 0.49)
+    , (0.49, 0.5)
+    , (0.49, 0.51)
+    , (0.49, 0.7)
+    , (0.49, 0.9)
+    , (0.5, 0.5)
+    , (0.5, 0.51)
     , (0.5, 0.7)
     , (0.5, 0.9)
+    , (0.51, 0.51)
+    , (0.51, 0.7)
+    , (0.51, 0.9)
     , (0.7, 0.7)
     , (0.7, 0.9)
     , (0.9, 0.9)
