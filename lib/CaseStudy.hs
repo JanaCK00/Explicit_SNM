@@ -35,7 +35,7 @@ This module implements the necessary code for the case study.
 It includes:
  (1) an implementation of Holme-Kim network generation;
  (2) generation of SNMs for the case study;
- (3) running the experiment and printing the results to the console.
+ (3) running the two experiments and printing the results to the console.
 -}
 
 
@@ -45,7 +45,8 @@ It includes:
 
 
 {-
-Define necessary Topics, Positions, Maps and Sets of Positions for the case study.
+Define the necessary topics, positions, maps,
+and sets of positions for the case study.
 -}
 sustainability :: Topic
 sustainability = T 1
@@ -77,7 +78,7 @@ aParam         = 0          --initial attractiveness
 
 
 --------------------------------------------------------------------------------
--- Implementation of Holme Kim network generation
+-- Implementation of Holme-Kim network generation
 --------------------------------------------------------------------------------
 
 
@@ -92,11 +93,11 @@ initialCore m_0 = initialCoreRec 0 where
 
 
 {-
-Generates a Holme-Kim relation
+Generates a Holme-Kim relation.
 Input:
 N:            number of nodes in final network
 m:            number of edges added per new node
-m ≤ m_0 < N : number of initial nodes
+m ≤ m_0 < N:  number of initial nodes
 p_t :         probability of a triad formation (TF) step
 A :           initial attractiveness for preferential attachment (PA)
 -}
@@ -105,20 +106,21 @@ holmeKim n m m_0 = holmeKimRec (n-m_0) m cur where
     cur = initialCore m_0
 
 {-
-Recursively generate Holme-Kim relation.
+Recursively generates a Holme-Kim relation.
 Input:
-Number of remaining nodes to add
-m: Number of edges to add per new node
-Current Relation
+n:   Number of remaining nodes to add
+m:   Number of edges to add per new node
+cur: Current relation (format: list of adjacency lists)
 p_t: probability of triad formation (TF) step
 att: initial attractiveness
 
-If no nodes remain, return the constructed relation.
-Otherwise execute one PA step, then generate a sequence of PA/TF steps (length m-1) and execute them.
+
+For the current node to be added: executes one PA step, then generates a
+sequence of PA/TF steps (of length m-1) and executes them.
 Then recursively finish the construction.
 -}
 holmeKimRec :: Int -> Int -> [[Int]] -> Double -> Int -> Gen Relation
-holmeKimRec 0 _ cur _ _ = return $ translate cur
+holmeKimRec 0 _ cur _ _ = return $ translate cur --When no nodes remain, return the constructed relation.
 holmeKimRec n m cur p_t att = do
     let curExt = cur ++ [[]] --we have an empty list to store the neighbors of newNode in
     (cur_1, lastPA) <- paStep curExt att
@@ -150,8 +152,8 @@ getStepList xs p_t l = do
 
 
 {-
-Input: p_t, d' (random double in range [0,1])
-Returns TFStep based on the probability p_t.
+Input: p_t, d' (random double in the range [0,1])
+Returns TFStep with probability p_t.
 -}
 pickStep :: Double -> Double -> Step
 pickStep p_t d'
@@ -162,11 +164,11 @@ pickStep p_t d'
 
 {-
 Input:
-list of steps
-tuple of (current network, last node connected to in PA)
-a: Initial attractiveness
+List of steps
+Tuple of (current network, last node connected to in PA)
+Initial attractiveness
 
-Output: Executes steps from left to right and returns network.
+Output: the network resulting from executing the steps from left to right.
 -}
 doSteps :: [Step] -> ([[Int]], Int) -> Int -> Gen [[Int]]
 doSteps [] (cur, _) _ = return cur
@@ -200,19 +202,20 @@ paStep cur att = do
 {-
 Executes one TF step for the newest node.
 Chooses randomly a non-neighbor node from the neighborhood of lastPA.
-If not such neighbor exists, executes a PA step.
+If no such neighbor exists, executes a PA step.
 
 Input:
 (current network, node that attached in last PA step)
 att: initial attractiveness
 
 Output:
-(New network, node that attached in last PA step) --latter might have changed if no tfStep was possible
+(New network, node that attached in last PA step)
+(The latter might have changed if no TF step was possible.)
 -}
 tfStep :: ([[Int]], Int) -> Int -> Gen ([[Int]], Int)
 tfStep (cur,lastPA) att = do
     let curNode = length cur -1
-        nonOptions = curNode : (cur !! curNode) --nodes that are already attached aren't a valid choice, neither is the node itself
+        nonOptions = curNode : (cur !! curNode) --Nodes that are already attached aren't a valid choice, neither is the node itself.
         choices = filter (`notElem` nonOptions) $ cur !! lastPA
     if null choices
         then paStep cur att
@@ -223,7 +226,7 @@ tfStep (cur,lastPA) att = do
 
 
 {-
-Adds a symmetric edge from node v to w.
+Adds an undirected (represented as a bidirectional) edge from node v to w.
 Assumes v and w are in the network!
 
 Input:
@@ -240,13 +243,16 @@ addEdge cur v w =  insertAt v w (insertAt w v cur)
 Inserts w into the neighborhood of v.
 Assumes v is in the network!
 
-Input
+Input:
 Node v
 Node w
-network
+Network
+
+Output:
+Network with added edge.
 -}
 insertAt :: Int -> Int -> [[Int]] -> [[Int]]
-insertAt _ _ []     = [] --shouldn't happen, because we assume v is in the network
+insertAt _ _ []     = [] --This shouldn't happen, because we assume v is in the network.
 insertAt 0 w (x:xs) | w `notElem` x = (w:x) : xs
                     | otherwise     = x:xs
 insertAt v w (x:xs) = x : insertAt (v - 1) w xs
@@ -254,7 +260,7 @@ insertAt v w (x:xs) = x : insertAt (v - 1) w xs
 
 
 {-
-Takes a list of adjacency lists and translates it into a Relation (vector of adjacency sets)
+Takes a list of adjacency lists and translates it into a Relation (vector of adjacency sets).
 -}
 translate :: [[Int]] -> Relation
 translate xs = V.fromList $  L.map IntSet.fromList xs
@@ -267,10 +273,10 @@ translate xs = V.fromList $  L.map IntSet.fromList xs
 
 
 {-
-Define a wrapper type to allow arbitrary generation of SNMs that fulfill the defined
-properties for the case study.
+Defines a wrapper type that allows the arbitrary generation of SNMs
+satisfying the properties defined for the case study.
 
-Additionally allows to store the set of popular positions.
+Additionally allows the set of popular positions to be stored.
 -}
 
 data SNMCase = SNMCase
@@ -281,10 +287,10 @@ data SNMCase = SNMCase
 
 
 {-
-Generates an SNMCase with arbitrary Holme-Kim Relation,
-and randomly distributed positions politicalNorm and financialNorm.
+Generates an SNMCase with an arbitrary Holme-Kim relation and
+randomly distributed positions politicalNorm and financialNorm.
 
-p_t: parameter for Holme Kim (tunable clustering)
+p_t: parameter for Holme-Kim (tunable clustering)
 -}
 
 
@@ -325,36 +331,38 @@ generate $ randomSNMCase 0.5
 --------------------------------------------------------------------------------
 
 {-
-Defining the parameters.
+Defining the values used for the parameters of experiment.
 -}
 
---The values for the parameter p_t in Holme Kim.
+--The values for the parameter p_t in Holme-Kim generation.
 ourPts :: [Double]
 ourPts = [0, 0.5, 0.8]
 
---The values for the number of leaders picked.
+--The values for the number of leader nodes.
 ourKs :: [Int]
 ourKs = [20, 25, 30]
 
 {-
 Data type for the intervention strategy.
-Popular: opinion leaders adapt their positions to mirror the popular stances.
-Authentic: opinion leaders stick to their positions
+Popular: opinion leaders adapt their positions to mirror the popular positions.
+Authentic: opinion leaders stick to their positions.
 -}
 
 data InterventionStrat = Popular | Authentic deriving (Show, Eq, Ord)
 
 
 {-
+Runs the experiment and prints the results to the console.
+
 Number of agents -> 120
-parameters of holme kim -> as defined above
+Parameters of Holme-Kim generation -> as defined above
 Threshold -> 0.5
 InflMode -> Basic
 SelecMode -> Basic
 
 Input:
-p_t: current parameter for holme kim
-n: Number of models to generate
+p_t: current parameter for Holme-Kim generation.
+n: number of models to generate
 ks: list of values for k to test
 
 Will generate n SNMCase using the parameter p_t for Holme Kim.
@@ -383,7 +391,7 @@ experimentHolme p_t n ks = do
 {-
 Input:
 List of values for k
-List of experiment results including k and Strategy.
+List of experiment results including k and strategy.
 
 Output:
 Aggregates the results by k and Strategy, to display average values across the generated models.
@@ -397,11 +405,10 @@ aggregate ks listOfResults =
 
 {-
 Input:
-Assumes non-empty list as input.
-List of experiment Results (single runs).
+List of experiment results (single runs). (non-empty list)
 
 Output:
-Calculates average of Results.
+Calculates average of results.
 
 -}
 averageResult :: [Results] -> Results
@@ -428,7 +435,7 @@ but can also be used to store an average.
 data Results = Results
     { avgPublic      :: Double                --Initial average degree of non-leader nodes
     , avgLeaders     :: Double                --Initial average degree of leader nodes
-    , stab           :: Maybe Double          --Number of iteration until stabilization. Nothing if none was reached.
+    , stab           :: Maybe Double          --Number of iterations until stabilization. Nothing if none was reached.
     , adoptRatios    :: M.Map Position Double --Ratio of nodes who hold each position in the final model.
     , fullyAdopted   :: Double                --Number of times all agents adopted the new position in the final model.
     , fullyRejected  :: Double                --Number of times no agents adopted the new position in the final model.
@@ -441,11 +448,11 @@ data Results = Results
 {-
 Input:
 Intervention strategy
-List of leaders (0 < length <= nr of Agents)
+List of leader nodes (0 < length <= nr of Agents)
 SNMCase
 
 Output:
-Intervenes on positions of leaders, runs interleaving and returns results.
+Intervenes on positions of leader nodes, runs interleaving and returns results.
 -}
 runOne :: InterventionStrat -> [Int] -> SNMCase -> Results
 runOne popStrat leaders snmCase   = Results avgPublic' avgLeaders' stab' finalDistribution fullyA fullyR partSucc where
@@ -480,9 +487,9 @@ intervention Popular pops leaders dualVal_t = IntMap.union (IntMap.fromList $ ma
 
 {-
 Input:
-p_t: Parameter for Holme Kim
+p_t:   Parameter for Holme-Kim generation
 n > 0: Number of models to generate
-List of values for k to test
+ks:    List of values for k to test
 
 Output:
 Runs experiment and prints results.
@@ -498,7 +505,7 @@ runAndShow p_t n ks = do
 
 
 {-
-Input: A list of aggregated result.
+Input: A list of aggregated results
 Output: Prints the results to the console.
 -}
 printTable :: [(Int, InterventionStrat, Results)] -> IO()
@@ -558,11 +565,11 @@ posDistribution_t snm t =  M.map (\s -> fromIntegral (IntSet.size s) / fromInteg
 
 {-
 Input:
-Relation
-List of leaders, length > 0
+rel':     Relation
+leaders': List of leader nodes, length > 0
 
 Output:
-Tuple of (average degree of non-leader node, average degree of leader node)
+Tuple of (average degree of non-leader nodes, average degree of leader nodes)
 -}
 averageDegrees :: Relation -> [Int] -> (Double, Double)
 averageDegrees rel' leaders'= (avgPublic', avgLeaders') where
@@ -584,16 +591,16 @@ averageDegrees rel' leaders'= (avgPublic', avgLeaders') where
 {-
 Input: k, relation
 
-Output: k leaders chosen according to highest degree and random tie breaking
+Output: k leader nodes chosen according to highest degree with random tie breaking
 -}
 getLeaders :: Int -> Relation -> Gen [Int]
 getLeaders = findKrich
 
 
 {-
-Input
-k: number of leaders to identify
-rel': Relation
+Input:
+k:    number of leaders to identify
+rel': relation
 
 Output:
 List of the k highest-degree nodes.
@@ -613,9 +620,11 @@ findKrich k rel' | k <= 0             = return []
                                             return (aboveCutoff ++ chosenFromTie)
 
 {-
-Input: Relation
-Output: a list of tuples (agent, number of friends),
-    sorted on descending number of friends.
+Input:
+Relation
+
+Output:
+A list of tuples (agent, number of friends), sorted by descending number of friends.
 -}
 degreeListDesc :: Relation -> [(Int, Int)]
 degreeListDesc = L.sortOn (Down . snd) . V.toList . V.imap (\i ags -> (i, IntSet.size ags))
@@ -627,18 +636,17 @@ degreeListDesc = L.sortOn (Down . snd) . V.toList . V.imap (\i ags -> (i, IntSet
 --the prevalence of the other two positions.
 ------------------------------------------------------------------------------
 
---Type to store a combination of prevalence of P 1 and P 2 in an initial model.
+--Type to store a combination of prevalences of P 1 and P 2 in an initial model.
 type PrevalenceCombo = (Double, Double)
 
 
 {-
 Hardcoded prevalence combinations used for the experiment.
-We test balanced (0.5), elevated (0.7) and high prevalence (0.9).
-As holding or not holding a position is (almost) symmetrical for threshold = 0.5, we do not test
-values below 0.5.
-As the two positions are symmetrical, we only need 6 combinations.
+We test balanced low (0.1), moderate (0.3), balanced (0.49, 0.5, 0.51), elevated (0.7),
+and high prevalence (0.9).
+
+As we can treat the two positions symmetrically, we only need 28 combinations.
 -}
---TODO change back
 prevalenceCombinations :: [PrevalenceCombo]
 prevalenceCombinations =
     [ (0.1, 0.1)
@@ -678,7 +686,7 @@ sustainabilityRel: Relation
 p1: prevalence for P 1
 p2: prevalence for P 2
 
-Output: Generate an SNMCase with given relation and given prevalences.
+Output: Generates an SNMCase with given relation and given prevalences.
 -}
 makeCaseWithPrevalence :: Relation -> Double  -> Double -> Gen SNMCase
 makeCaseWithPrevalence sustainabilityRel p1 p2 = do
@@ -727,10 +735,11 @@ experimentPrevalence n k = do
 
 {-
 Input:
-List of experiment results including k and Strategy.
+List of experiment results including prevalence combinatoin and strategy.
 
 Output:
-Aggregates the results by prevalence combo and Strategy, to display average values across the generated models.
+Aggregates the results by prevalence combo and strategy, to display
+average values across the generated models.
 -}
 aggregatePrevalence :: [(PrevalenceCombo, InterventionStrat, Results)] -> [(PrevalenceCombo, InterventionStrat, Results)]
 aggregatePrevalence results =
@@ -757,7 +766,7 @@ runAndShowPrevalence n k = do
 
 
 {-
-Input: A list of aggregated results of prevalence experiment.
+Input: A list of aggregated results from the prevalence experiment.
 Output: Prints the results to the console.
 -}
 printTablePrevalence :: [(PrevalenceCombo, InterventionStrat, Results)] -> IO ()
